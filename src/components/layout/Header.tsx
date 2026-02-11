@@ -26,48 +26,43 @@ interface NavItem {
 const NAVIGATION: NavItem[] = [
   { 
     label: 'Início', 
-    href: '/', 
+    href: '#hero-section', 
     isActive: true,
     submenu: [
-      { label: 'Portal do Aluno', href: '/' },
-      { label: 'Portal do Professor', href: '#' },
+      { label: 'Portal do Aluno', href: '/login' },
+      { label: 'Portal do Professor', href: '/login' },
     ]
   },
   { 
     label: 'Aulas/Cursos', 
-    href: '#',
+    href: '#features-section',
     submenu: [
-      { label: 'Matemática', href: '#' },
-      { label: 'Química', href: '#' },
-      { label: 'Física', href: '#' },
+      { label: 'Matemática', href: '#features-section' },
+      { label: 'Química', href: '#features-section' },
+      { label: 'Física', href: '#features-section' },
     ]
   },
   { 
     label: 'Metodologia', 
-    href: '#',
+    href: '#about-section',
     submenu: [
-      { label: 'Como Funciona', href: '#' },
-      { label: 'Preços', href: '#' },
-      { label: 'Sobre Portal Aluno', href: '#' },
+      { label: 'Como Funciona', href: '#about-section' },
+      { label: 'Benefícios', href: '#features-section' },
+      { label: 'Certificados', href: '#certificate-section' },
     ]
   },
   { 
-    label: 'Ebook', 
-    href: '#',
+    label: 'Conteúdos', 
+    href: '#blog-section',
     submenu: [
-      { label: 'Inteligência Artifical nos Estudos', href: '#' },
-      { label: 'O Conceito do ensino híbrido', href: '#' },
+      { label: 'Blog', href: '#blog-section' },
+      { label: 'Certificados', href: '#certificate-section' },
     ]
   },
   { 
-    label: 'Blog e Vestibulares', 
-    href: '#',
-    submenu: [
-      { label: 'Nosso Blog', href: '#' },
-      { label: 'Matérias', href: '#' },
-      { label: 'Portal de Vestibulares', href: '#' },
-    ]
-  },
+    label: 'Sobre', 
+    href: '#about-section',
+  }, 
   { label: 'Contato', href: '/contato' },
 ];
 

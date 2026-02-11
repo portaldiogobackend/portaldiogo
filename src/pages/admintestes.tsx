@@ -557,7 +557,7 @@ export default function AdminTestes() {
         return;
       }
 
-      const lines = text.split('\n').filter(line => line.trim() !== '');
+      const lines = text.split(/\r?\n/).map(line => line.trim()).filter(line => line !== '');
       let successCount = 0;
       const errors: string[] = [];
 
@@ -573,7 +573,7 @@ export default function AdminTestes() {
         const pergunta = parts[0].trim();
         const alternativas = parts[1].trim();
         const respostaStr = parts[2].trim();
-        const justificativa = parts[3].trim();
+        const justificativa = parts.slice(3).join('|').trim();
 
         if (!pergunta || !alternativas || !respostaStr) {
           errors.push(`Linha ${i + 1}: Campos obrigatórios faltando.`);
@@ -586,9 +586,13 @@ export default function AdminTestes() {
            continue;
         }
 
-        const alts = alternativas.split(';').filter(a => a.trim() !== '');
+        const alts = alternativas.split(';').map(a => a.trim()).filter(a => a !== '');
         if (alts.length < 2) {
           errors.push(`Linha ${i + 1}: Mínimo de 2 alternativas necessárias.`);
+          continue;
+        }
+        if (resposta > alts.length) {
+          errors.push(`Linha ${i + 1}: Resposta deve estar entre 1 e ${alts.length}.`);
           continue;
         }
 
@@ -848,17 +852,19 @@ export default function AdminTestes() {
       return;
     }
     
-    const filledAlternativas = formData.alternativas.filter(alt => alt.trim() !== '');
+    const filledAlternativas = formData.alternativas.map(alt => alt.trim()).filter(alt => alt !== '');
     if (filledAlternativas.length < 2) {
       showToast('Preencha pelo menos 2 alternativas.', 'error');
+      return;
+    }
+    if (formData.resposta < 1 || formData.resposta > filledAlternativas.length) {
+      showToast(`Selecione uma resposta entre 1 e ${filledAlternativas.length}.`, 'error');
       return;
     }
 
     setSaving(true);
     try {
-      const alternativaString = formData.alternativas
-        .filter(alt => alt.trim() !== '')
-        .join(';');
+      const alternativaString = filledAlternativas.join(';');
 
       const dataToSave = {
         idmat: formData.idmat,

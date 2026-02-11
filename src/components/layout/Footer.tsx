@@ -12,20 +12,20 @@ interface FooterLink {
 
 // ============== Footer Data ==============
 const NAVIGATION_LINKS: FooterLink[] = [
-  { label: 'Sobre Nós', href: '#about' },
-  { label: 'Cursos', href: '#courses' },
-  { label: 'O Instrutor', href: '#instructor' },
-  { label: 'FAQs', href: '#faq' },
+  { label: 'Início', href: '#hero-section' },
+  { label: 'Cursos', href: '#features-section' },
+  { label: 'Metodologia', href: '#about-section' },
+  { label: 'Certificados', href: '#certificate-section' },
+  { label: 'Blog', href: '#blog-section' },
   { label: 'Contato', href: '/contato' },
-  { label: 'Blogs', href: '#blog' },
 ];
 
 const CATEGORY_LINKS: FooterLink[] = [
   { label: 'Portal de Exercícios', href: '/login' },
   { label: 'Painel do Aluno', href: '/login' },
-  { label: 'Cursos de Matemática', href: '#courses' },
-  { label: 'Cursos de Química', href: '#courses' },
-  { label: 'Cursos de Física', href: '#courses' },
+  { label: 'Cursos de Matemática', href: '#features-section' },
+  { label: 'Cursos de Química', href: '#features-section' },
+  { label: 'Cursos de Física', href: '#features-section' },
 ];
 
 const SOCIAL_LINKS = [

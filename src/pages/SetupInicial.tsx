@@ -2,6 +2,8 @@ import { supabase } from '@/lib/supabase';
 import {
   Bell,
   BookOpen,
+  CalendarCheck,
+  CreditCard,
   LayoutDashboard,
   MessageSquare,
   Search,
@@ -24,7 +26,10 @@ export const SetupInicial: React.FC = () => {
     students: 0,
     testes: 0,
     materias: 0,
-    temas: 0
+    temas: 0,
+    frequencias: 0,
+    pagamentos: 0,
+    totalRecebido: 0
   });
   
   // State for Lists/Charts
@@ -38,6 +43,10 @@ export const SetupInicial: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
+
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+  };
 
   useEffect(() => {
     fetchDashboardData();
@@ -64,16 +73,27 @@ export const SetupInicial: React.FC = () => {
         supabase.from('tbf_controle_user').select('id', { count: 'exact', head: true }).eq('role', 'aluno'),
         supabase.from('tbf_testes').select('id', { count: 'exact', head: true }),
         supabase.from('tbf_materias').select('id', { count: 'exact', head: true }),
-        supabase.from('tbf_temas').select('id', { count: 'exact', head: true })
+        supabase.from('tbf_temas').select('id', { count: 'exact', head: true }),
+        supabase.from('tbf_frequencias').select('id', { count: 'exact', head: true }),
+        supabase.from('tbf_pagamentos').select('id', { count: 'exact', head: true }),
+        supabase.from('tbf_pagamentos').select('valor_pago')
       ]);
 
-      const [studentsRes, testesRes, materiasRes, temasRes] = results;
+      const [studentsRes, testesRes, materiasRes, temasRes, frequenciasRes, pagamentosRes, pagamentosValoresRes] = results;
+      const pagamentosValores = (pagamentosValoresRes.data as { valor_pago: number | string | null }[] | null) || [];
+      const totalRecebido = pagamentosValores.reduce((total, item) => {
+        const value = Number(item.valor_pago ?? 0);
+        return total + (Number.isFinite(value) ? value : 0);
+      }, 0);
 
       setStats({
         students: studentsRes.count || 0,
         testes: testesRes.count || 0,
         materias: materiasRes.count || 0,
-        temas: temasRes.count || 0
+        temas: temasRes.count || 0,
+        frequencias: frequenciasRes.count || 0,
+        pagamentos: pagamentosRes.count || 0,
+        totalRecebido
       });
 
       // 3. Recent Users
@@ -253,6 +273,30 @@ export const SetupInicial: React.FC = () => {
                 color="text-[#E31A1A]" 
                 bg="bg-[#FFEEEE]"
                 onClick={() => navigate('/temas')}
+              />
+              <KPICard 
+                title="Frequências" 
+                value={stats.frequencias} 
+                icon={CalendarCheck} 
+                color="text-[#0F766E]" 
+                bg="bg-[#E6FFFB]"
+                onClick={() => navigate('/frequencia-pagamentos')}
+              />
+              <KPICard 
+                title="Pagamentos" 
+                value={stats.pagamentos} 
+                icon={CreditCard} 
+                color="text-[#0B5ED7]" 
+                bg="bg-[#E8F1FF]"
+                onClick={() => navigate('/frequencia-pagamentos')}
+              />
+              <KPICard 
+                title="Total Recebido" 
+                value={formatCurrency(stats.totalRecebido)} 
+                icon={CreditCard} 
+                color="text-[#0D9488]" 
+                bg="bg-[#E6FFFB]"
+                onClick={() => navigate('/frequencia-pagamentos')}
               />
             </div>
 
