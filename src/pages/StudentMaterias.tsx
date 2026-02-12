@@ -10,7 +10,7 @@ import {
   Video,
   Download
 } from 'lucide-react';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LogoutModal } from '../components/layout/LogoutModal';
 import { StudentSidebar } from '../components/layout/StudentSidebar';
@@ -33,7 +33,11 @@ export const StudentMaterias: React.FC = () => {
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  const fetchUserData = useCallback(async () => {
+  useEffect(() => {
+    fetchUserData();
+  }, []);
+
+  const fetchUserData = async () => {
     try {
       setLoading(true);
       
@@ -87,11 +91,7 @@ export const StudentMaterias: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [navigate]);
-
-  useEffect(() => {
-    fetchUserData();
-  }, [fetchUserData]);
+  };
 
   const handleLogout = async () => {
     try {

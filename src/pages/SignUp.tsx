@@ -36,10 +36,9 @@ export const SignUp: React.FC = () => {
         },
       });
       if (error) throw error;
-    } catch (err) {
+    } catch (err: any) {
       console.error('[Auth] Erro no cadastro com Google:', err);
-      const message = err instanceof Error ? err.message : 'Erro ao conectar com Google.';
-      setError(message);
+      setError(err.message || 'Erro ao conectar com Google.');
     }
   };
 
@@ -147,19 +146,17 @@ export const SignUp: React.FC = () => {
       
       // Redirecionar para Login após cadastro para mostrar mensagem de sucesso
       navigate('/login?success=signup');
-    } catch (err) {
+    } catch (err: any) {
       console.error('[SignUp] Erro durante o cadastro:', err);
-      const message = err instanceof Error ? err.message : '';
-      const status = typeof (err as { status?: number }).status === 'number' ? (err as { status?: number }).status : undefined;
       
       // Tratamento específico para erro de envio de e-mail do Supabase
-      if (message === 'Error sending confirmation email' || status === 422) {
+      if (err.message === 'Error sending confirmation email' || err.status === 422) {
         setError(
           'Erro ao enviar e-mail de confirmação. Isso geralmente acontece quando o limite de e-mails do Supabase é atingido ou o SMTP não está configurado. ' +
           'Para corrigir, acesse o Dashboard do Supabase > Authentication > Providers > Email e desative "Confirm Email" ou configure um serviço de SMTP (SendGrid, Resend, etc).'
         );
       } else {
-        setError(message || 'Ocorreu um erro ao realizar o cadastro.');
+        setError(err.message || 'Ocorreu um erro ao realizar o cadastro.');
       }
     } finally {
       setIsLoading(false);

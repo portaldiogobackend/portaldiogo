@@ -103,7 +103,7 @@ const Usuarios: React.FC = () => {
     logAudit('access_users_list', null, { page: 'Usuarios' });
   }, []);
 
-  const logAudit = async (action: string, targetId: string | null, details: Record<string, unknown> = {}) => {
+  const logAudit = async (action: string, targetId: string | null, details: any = {}) => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
@@ -347,8 +347,8 @@ const Usuarios: React.FC = () => {
 
   // Sorting logic
   const sortedUsers = [...filteredUsers].sort((a, b) => {
-    let aValue = '';
-    let bValue = '';
+    let aValue: any;
+    let bValue: any;
 
     if (sortConfig.key === 'nome') {
       aValue = `${a.nome} ${a.sobrenome}`.toLowerCase();
