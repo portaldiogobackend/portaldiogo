@@ -51,35 +51,6 @@ export const Login: React.FC = () => {
 
   // Verificar se o usuário já está logado ao carregar a página
   React.useEffect(() => {
-    const handleOAuthRedirect = async () => {
-      const params = new URLSearchParams(window.location.search);
-      const code = params.get('code');
-      const errorParam = params.get('error');
-      const errorDescription = params.get('error_description');
-
-      if (errorParam) {
-        const decoded = errorDescription ? decodeURIComponent(errorDescription) : 'Erro ao autenticar com Google.';
-        setError(decoded);
-        return;
-      }
-
-      if (!code) return;
-
-      const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(window.location.href);
-      if (exchangeError) {
-        setError(exchangeError.message);
-        return;
-      }
-
-      params.delete('code');
-      params.delete('error');
-      params.delete('error_description');
-      params.delete('state');
-      const cleanSearch = params.toString();
-      const cleanUrl = `${window.location.origin}${window.location.pathname}${cleanSearch ? `?${cleanSearch}` : ''}`;
-      window.history.replaceState({}, document.title, cleanUrl);
-    };
-
     const checkUser = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) {
@@ -107,11 +78,7 @@ export const Login: React.FC = () => {
         }
       }
     };
-    const init = async () => {
-      await handleOAuthRedirect();
-      await checkUser();
-    };
-    init();
+    checkUser();
 
     // Listener para mudanças de estado de autenticação (ex: após login com Google)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
