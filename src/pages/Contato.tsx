@@ -58,6 +58,8 @@ export const Contato: React.FC = () => {
   // Estado do captcha
   const [isCaptchaVerified, setIsCaptchaVerified] = useState(false);
   const altchaContainerRef = useRef<HTMLDivElement>(null);
+  type AltchaStateChangeEvent = CustomEvent<{ state?: string }>;
+  type AltchaWidgetElement = HTMLElement & { state?: string; reset?: () => void };
 
   // Efeito para configurar o ALTCHA widget de forma estável
   useEffect(() => {
@@ -77,15 +79,16 @@ export const Contato: React.FC = () => {
 
     const widget = container.querySelector('altcha-widget');
     
-    const handleStateChange = (ev: any) => {
-      console.log('ALTCHA state changed:', ev.detail.state);
-      setIsCaptchaVerified(ev.detail.state === 'verified');
+    const handleStateChange = (ev: Event) => {
+      const state = (ev as AltchaStateChangeEvent).detail?.state;
+      console.log('ALTCHA state changed:', state);
+      setIsCaptchaVerified(state === 'verified');
     };
 
     if (widget) {
       widget.addEventListener('statechange', handleStateChange);
       // Verificar estado inicial caso já esteja verificado
-      if ((widget as any).state === 'verified') {
+      if ((widget as AltchaWidgetElement).state === 'verified') {
         setIsCaptchaVerified(true);
       }
     }
@@ -207,7 +210,7 @@ export const Contato: React.FC = () => {
     setIsCaptchaVerified(false);
     // Resetar o widget ALTCHA
     if (altchaContainerRef.current) {
-      const widget = altchaContainerRef.current.querySelector('altcha-widget') as any;
+      const widget = altchaContainerRef.current.querySelector('altcha-widget') as AltchaWidgetElement | null;
       if (widget && typeof widget.reset === 'function') {
         widget.reset();
       }

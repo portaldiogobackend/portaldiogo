@@ -269,7 +269,7 @@ export const Mensagens: React.FC = () => {
       return format(new Date(dateStr), "dd/MM/yyyy 'às' HH:mm", {
         locale: ptBR,
       });
-    } catch (e) {
+    } catch {
       return dateStr;
     }
   };

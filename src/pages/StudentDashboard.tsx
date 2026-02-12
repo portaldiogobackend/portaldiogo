@@ -10,7 +10,7 @@ import {
   XCircle,
   AlertCircle
 } from 'lucide-react';
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LogoutModal } from '../components/layout/LogoutModal';
 import { StudentSidebar } from '../components/layout/StudentSidebar';
@@ -40,11 +40,7 @@ export const StudentDashboard: React.FC = () => {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
 
-  useEffect(() => {
-    fetchDashboardData();
-  }, []);
-
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = useCallback(async () => {
     try {
       setLoading(true);
       
@@ -147,7 +143,11 @@ export const StudentDashboard: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [navigate]);
+
+  useEffect(() => {
+    fetchDashboardData();
+  }, [fetchDashboardData]);
 
   const handleLogout = async () => {
     try {

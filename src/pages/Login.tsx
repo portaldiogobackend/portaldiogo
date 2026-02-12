@@ -42,9 +42,10 @@ export const Login: React.FC = () => {
         },
       });
       if (error) throw error;
-    } catch (err: any) {
+    } catch (err) {
       console.error('[Auth] Erro no login com Google:', err);
-      setError(err.message || 'Erro ao conectar com Google.');
+      const message = err instanceof Error ? err.message : 'Erro ao conectar com Google.';
+      setError(message);
     }
   };
 
@@ -149,9 +150,10 @@ export const Login: React.FC = () => {
           await supabase.auth.signOut();
         }
       }
-    } catch (err: any) {
+    } catch (err) {
       console.error('[Auth] Erro no login:', err);
-      setError(err.message || 'E-mail ou senha incorretos.');
+      const message = err instanceof Error ? err.message : 'E-mail ou senha incorretos.';
+      setError(message);
     } finally {
       setIsLoading(false);
     }

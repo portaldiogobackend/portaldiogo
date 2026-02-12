@@ -6,7 +6,7 @@ import { capitalizeWords } from '@/lib/utils';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { ChevronLeft, Image as ImageIcon, Menu, Send, Upload } from 'lucide-react';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
 import { useNavigate } from 'react-router-dom';
@@ -57,7 +57,7 @@ const renderLatex = (html: string) => {
   const replacements: Array<{ regex: RegExp; displayMode: boolean }> = [
     { regex: /\$\$([\s\S]+?)\$\$/g, displayMode: true },
     { regex: /\\\[((?:.|\n)+?)\\\]/g, displayMode: true },
-    { regex: /\$([^\$]+?)\$/g, displayMode: false },
+    { regex: /\$([^$]+?)\$/g, displayMode: false },
     { regex: /\\\((.+?)\\\)/g, displayMode: false }
   ];
 
@@ -101,11 +101,11 @@ export const StudentDissertativas: React.FC = () => {
   const [respostasImagem, setRespostasImagem] = useState<Record<string, File | null>>({});
   const [sendingId, setSendingId] = useState<string | null>(null);
 
-  const showToast = (message: string, type: ToastType) => {
+  const showToast = useCallback((message: string, type: ToastType) => {
     setToast({ message, type });
-  };
+  }, []);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -158,11 +158,11 @@ export const StudentDissertativas: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [navigate, showToast]);
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [fetchData]);
 
   const envioByQuestao = (id: string) => envios.find(envio => envio.questao_id === id);
   const materiaName = (id: string) => materias.find(m => m.id === id)?.materia || '—';

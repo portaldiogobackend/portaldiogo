@@ -55,9 +55,10 @@ export const RedefinirSenha = () => {
         navigate('/login');
       }, 3000);
 
-    } catch (err: any) {
+    } catch (err) {
       console.error('Erro ao atualizar senha:', err);
-      setError(err.message || 'Erro ao atualizar a senha. Tente novamente.');
+      const message = err instanceof Error ? err.message : 'Erro ao atualizar a senha. Tente novamente.';
+      setError(message);
     } finally {
       setLoading(false);
     }
