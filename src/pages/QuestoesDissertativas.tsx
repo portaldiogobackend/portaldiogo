@@ -8,7 +8,7 @@ import { capitalizeWords } from '@/lib/utils';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { ChevronLeft, FileText, Filter, Menu, Pencil, Search, Trash2, Upload, X } from 'lucide-react';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
 import katex from 'katex';
@@ -68,23 +68,22 @@ interface EnvioDissertativa {
   tipo_resposta: 'texto' | 'imagem';
   enviado_em: string;
   comentario_professor: string | null;
-  nota?: number | null;
   corrigida: boolean | null;
   corrigido_em: string | null;
 }
 
-type QuillEditor = ReturnType<ReactQuill['getEditor']>;
-
-const toolbarOptions = [
-  [{ header: [1, 2, false] }],
-  ['bold', 'italic', 'underline', 'strike', 'blockquote'],
-  [{ list: 'ordered' }, { list: 'bullet' }, { indent: '-1' }, { indent: '+1' }],
-  ['link', 'image'],
-  [{ script: 'sub' }, { script: 'super' }],
-  [{ color: [] }, { background: [] }],
-  [{ align: [] }],
-  ['clean']
-];
+const modules = {
+  toolbar: [
+    [{ header: [1, 2, false] }],
+    ['bold', 'italic', 'underline', 'strike', 'blockquote'],
+    [{ list: 'ordered' }, { list: 'bullet' }, { indent: '-1' }, { indent: '+1' }],
+    ['link', 'image'],
+    [{ script: 'sub' }, { script: 'super' }],
+    [{ color: [] }, { background: [] }],
+    [{ align: [] }],
+    ['clean']
+  ]
+};
 
 const formats = [
   'header',
@@ -190,8 +189,6 @@ export default function QuestoesDissertativas() {
 
   const [currentQuestao, setCurrentQuestao] = useState<QuestaoDissertativa | null>(null);
   const [currentEnvio, setCurrentEnvio] = useState<EnvioDissertativa | null>(null);
-  const enunciadoRef = useRef<ReactQuill | null>(null);
-  const respostaRef = useRef<ReactQuill | null>(null);
   const [formData, setFormData] = useState({
     enunciado: '',
     resposta_esperada: '',
@@ -204,8 +201,7 @@ export default function QuestoesDissertativas() {
   const [importLog, setImportLog] = useState<{ success: number; errors: string[] } | null>(null);
   const [correctionForm, setCorrectionForm] = useState({
     comentario_professor: '',
-    corrigida: false,
-    nota: ''
+    corrigida: false
   });
 
   const isStaff = userRole === 'admin' || userRole === 'professor';
@@ -346,8 +342,7 @@ export default function QuestoesDissertativas() {
     setCurrentEnvio(envio);
     setCorrectionForm({
       comentario_professor: envio.comentario_professor || '',
-      corrigida: !!envio.corrigida,
-      nota: envio.nota !== null && envio.nota !== undefined ? String(envio.nota) : ''
+      corrigida: !!envio.corrigida
     });
     setIsCorrectionModalOpen(true);
   };
@@ -414,8 +409,7 @@ export default function QuestoesDissertativas() {
       closeModal();
     } catch (error) {
       console.error('Erro ao salvar questão:', error);
-      const message = error instanceof Error ? error.message : 'Erro ao salvar questão.';
-      showToast(message, 'error');
+      showToast('Erro ao salvar questão.', 'error');
     } finally {
       setSaving(false);
     }
@@ -534,29 +528,29 @@ export default function QuestoesDissertativas() {
           professor = getValue('professor') || getValue('professor_responsavel');
         } else {
           const parts = line.split('|');
-          if (parts.length < 4) {
-            errors.push(`Linha ${lineIndex}: Formato inválido. Use 4 a 6 colunas separadas por |`);
+          if (parts.length < 6) {
+            errors.push(`Linha ${lineIndex}: Formato inválido. Use 6 colunas separadas por |`);
             continue;
           }
           enunciado = parts[0]?.trim();
           resposta = parts[1]?.trim();
           disciplina = parts[2]?.trim();
           serie = parts[3]?.trim();
-          tema = parts[4]?.trim() || '';
-          professor = parts[5]?.trim() || '';
+          tema = parts[4]?.trim();
+          professor = parts[5]?.trim();
         }
 
-        if (!enunciado || !resposta || !disciplina || !serie) {
+        if (!enunciado || !resposta || !disciplina || !serie || !tema || !professor) {
           errors.push(`Linha ${lineIndex}: Campos obrigatórios faltando.`);
           continue;
         }
 
         const idmat = findMateriaId(disciplina);
         const idserie = findSerieId(serie);
-        const idtema = tema ? findTemaId(tema) : '';
-        const professorId = professor ? findProfessorId(professor) : (currentUserId || '');
+        const idtema = findTemaId(tema);
+        const professorId = findProfessorId(professor);
 
-        if (!idmat || !idserie || (tema && !idtema) || !professorId) {
+        if (!idmat || !idserie || !idtema || !professorId) {
           errors.push(`Linha ${lineIndex}: Disciplina, série, tema ou professor inválido.`);
           continue;
         }
@@ -569,7 +563,7 @@ export default function QuestoesDissertativas() {
               resposta_esperada: resposta,
               idmat,
               idserie,
-              idtema: idtema || null,
+              idtema,
               professor_id: professorId
             }]);
           if (error) throw error;
@@ -604,16 +598,13 @@ export default function QuestoesDissertativas() {
   const handleSaveCorrection = async () => {
     if (!currentEnvio) return;
     try {
-      const basePayload = {
-        comentario_professor: correctionForm.comentario_professor,
-        corrigida: correctionForm.corrigida,
-        corrigido_em: correctionForm.corrigida ? new Date().toISOString() : null
-      };
-      const hasNota = correctionForm.nota !== '' && !Number.isNaN(Number(correctionForm.nota));
-      const payload = hasNota ? { ...basePayload, nota: Number(correctionForm.nota) } : basePayload;
       const { data, error } = await supabase
         .from('tbf_questoes_dissertativas_envios')
-        .update(payload)
+        .update({
+          comentario_professor: correctionForm.comentario_professor,
+          corrigida: correctionForm.corrigida,
+          corrigido_em: correctionForm.corrigida ? new Date().toISOString() : null
+        })
         .eq('id', currentEnvio.id)
         .select()
         .single();
@@ -622,100 +613,10 @@ export default function QuestoesDissertativas() {
       showToast('Correção atualizada com sucesso!', 'success');
       closeCorrection();
     } catch (error) {
-      const message = error instanceof Error ? error.message : '';
-      if (message.toLowerCase().includes('nota') && correctionForm.nota !== '') {
-        try {
-          const { data, error: retryError } = await supabase
-            .from('tbf_questoes_dissertativas_envios')
-            .update({
-              comentario_professor: correctionForm.comentario_professor,
-              corrigida: correctionForm.corrigida,
-              corrigido_em: correctionForm.corrigida ? new Date().toISOString() : null
-            })
-            .eq('id', currentEnvio.id)
-            .select()
-            .single();
-          if (retryError) throw retryError;
-          setEnvios(prev => prev.map(e => e.id === currentEnvio.id ? (data as EnvioDissertativa) : e));
-          showToast('Correção salva sem nota.', 'success');
-          closeCorrection();
-          return;
-        } catch (retryErr) {
-          console.error('Erro ao salvar correção:', retryErr);
-        }
-      }
       console.error('Erro ao salvar correção:', error);
       showToast('Erro ao salvar correção.', 'error');
     }
   };
-
-  const insertImageIntoQuill = (quill: QuillEditor | null, url: string) => {
-    if (!quill) return;
-    const range = quill.getSelection(true);
-    const index = range ? range.index : quill.getLength();
-    quill.insertEmbed(index, 'image', url, 'user');
-    quill.setSelection(index + 1);
-  };
-
-  const createImageHandler = useCallback((ref: React.RefObject<ReactQuill | null>) => {
-    return async () => {
-      const quill = ref.current?.getEditor();
-      if (!quill) return;
-      const url = window.prompt('Cole a URL da imagem (deixe vazio para enviar do computador):');
-      if (url) {
-        insertImageIntoQuill(quill, url);
-        return;
-      }
-      const input = document.createElement('input');
-      input.type = 'file';
-      input.accept = 'image/*';
-      input.onchange = async () => {
-        const file = input.files?.[0];
-        if (!file) return;
-        if (!currentUserId) {
-          showToast('Usuário não identificado.', 'error');
-          return;
-        }
-        try {
-          const bucket = 'dissertativas-questoes';
-          const filePath = `${currentUserId}/${Date.now()}-${file.name}`;
-          const { error: uploadError } = await supabase.storage.from(bucket).upload(filePath, file, {
-            upsert: false,
-            contentType: file.type
-          });
-          if (uploadError) throw uploadError;
-          const { data: publicUrl } = supabase.storage.from(bucket).getPublicUrl(filePath);
-          if (!publicUrl?.publicUrl) {
-            showToast('Não foi possível obter a URL da imagem.', 'error');
-            return;
-          }
-          insertImageIntoQuill(quill, publicUrl.publicUrl);
-        } catch (uploadError) {
-          console.error('Erro ao enviar imagem:', uploadError);
-          showToast('Erro ao enviar imagem.', 'error');
-        }
-      };
-      input.click();
-    };
-  }, [currentUserId, showToast]);
-
-  const enunciadoModules = useMemo(() => ({
-    toolbar: {
-      container: toolbarOptions,
-      handlers: {
-        image: createImageHandler(enunciadoRef)
-      }
-    }
-  }), [createImageHandler]);
-
-  const respostaModules = useMemo(() => ({
-    toolbar: {
-      container: toolbarOptions,
-      handlers: {
-        image: createImageHandler(respostaRef)
-      }
-    }
-  }), [createImageHandler]);
 
   const materiaName = (id: string) => materias.find(m => m.id === id)?.materia || '—';
   const serieName = (id: string) => series.find(s => s.id === id)?.serie || '—';
@@ -935,7 +836,6 @@ export default function QuestoesDissertativas() {
                       <th className="py-4 px-4 text-sm font-bold text-[#A3AED0] uppercase tracking-wider">Questão</th>
                       <th className="py-4 px-4 text-sm font-bold text-[#A3AED0] uppercase tracking-wider">Tipo</th>
                       <th className="py-4 px-4 text-sm font-bold text-[#A3AED0] uppercase tracking-wider">Enviado em</th>
-                      <th className="py-4 px-4 text-sm font-bold text-[#A3AED0] uppercase tracking-wider">Nota</th>
                       <th className="py-4 px-4 text-sm font-bold text-[#A3AED0] uppercase tracking-wider">Status</th>
                       <th className="py-4 px-4 text-sm font-bold text-[#A3AED0] uppercase tracking-wider text-right">Ações</th>
                     </tr>
@@ -959,9 +859,6 @@ export default function QuestoesDissertativas() {
                             <td className="py-4 px-4 text-sm text-gray-600 capitalize">{envio.tipo_resposta}</td>
                             <td className="py-4 px-4 text-sm text-gray-600">
                               {envio.enviado_em ? format(new Date(envio.enviado_em), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR }) : '—'}
-                            </td>
-                            <td className="py-4 px-4 text-sm text-gray-600">
-                              {envio.nota !== null && envio.nota !== undefined ? envio.nota : '—'}
                             </td>
                             <td className="py-4 px-4 text-sm font-medium">
                               {envio.corrigida ? (
@@ -1000,11 +897,10 @@ export default function QuestoesDissertativas() {
               theme="snow"
               value={formData.enunciado}
               onChange={(value) => setFormData(prev => ({ ...prev, enunciado: value }))}
-              modules={enunciadoModules}
+              modules={modules}
               formats={formats}
               placeholder="Digite o enunciado com LaTeX usando $...$"
               className="bg-white"
-              ref={enunciadoRef}
             />
           </div>
 
@@ -1014,11 +910,10 @@ export default function QuestoesDissertativas() {
               theme="snow"
               value={formData.resposta_esperada}
               onChange={(value) => setFormData(prev => ({ ...prev, resposta_esperada: value }))}
-              modules={respostaModules}
+              modules={modules}
               formats={formats}
               placeholder="Descreva passo a passo, com LaTeX se necessário"
               className="bg-white"
-              ref={respostaRef}
             />
           </div>
 
@@ -1050,7 +945,7 @@ export default function QuestoesDissertativas() {
               </select>
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium text-gray-700">Tema/Conteúdo</label>
+              <label className="text-sm font-medium text-gray-700">Tema/Conteúdo *</label>
               <select
                 value={formData.idtema}
                 onChange={(e) => setFormData(prev => ({ ...prev, idtema: e.target.value }))}
@@ -1112,7 +1007,7 @@ export default function QuestoesDissertativas() {
             <p className="font-bold mb-2">Formatos aceitos</p>
             <p className="mb-2">TXT (uma questão por linha):</p>
             <p className="font-mono text-xs bg-white/50 p-2 rounded border border-blue-200">
-              enunciado | resposta_esperada | disciplina | serie | tema(opcional) | professor(opcional)
+              enunciado | resposta_esperada | disciplina | serie | tema | professor
             </p>
             <p className="mt-3 mb-2">CSV com cabeçalhos:</p>
             <p className="font-mono text-xs bg-white/50 p-2 rounded border border-blue-200">
@@ -1204,18 +1099,6 @@ export default function QuestoesDissertativas() {
                 placeholder="Escreva seus comentários..."
               />
             </div>
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-gray-700">Nota</label>
-            <input
-              type="number"
-              value={correctionForm.nota}
-              onChange={(e) => setCorrectionForm(prev => ({ ...prev, nota: e.target.value }))}
-              className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-700 focus:ring-2 focus:ring-[#4318FF] outline-none"
-              placeholder="Digite a nota"
-              min="0"
-              step="0.1"
-            />
-          </div>
             <div className="flex items-center gap-2">
               <input
                 type="checkbox"
