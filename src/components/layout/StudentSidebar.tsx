@@ -7,7 +7,6 @@ import {
   LogOut,
   HelpCircle,
   FileCheck,
-  ClipboardList,
   FileText
 } from 'lucide-react';
 
@@ -37,7 +36,6 @@ export const StudentSidebar: React.FC<StudentSidebarProps> = ({
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, path: '/aluno/dashboard' },
     { id: 'materias', label: 'Matérias', icon: BookOpen, path: '/aluno/materias' },
     { id: 'testes', label: 'Testes', icon: FileCheck, path: '/aluno/testes' },
-    { id: 'listas-exercicios', label: 'Listas de Exercícios', icon: ClipboardList, path: '/aluno/listas-exercicios' },
     { id: 'dissertativas', label: 'Questões Dissertativas', icon: FileText, path: '/aluno/questoes-dissertativas' },
     { id: 'duvidas', label: 'Central de Dúvidas', icon: HelpCircle, path: '/aluno/central-duvidas' },
   ];

@@ -9,7 +9,6 @@ import {
   HelpCircle,
   Star,
   GraduationCap,
-  ClipboardList,
   FileText,
   Settings,
   LogOut,
@@ -46,7 +45,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'central-duvidas', label: 'Central de Dúvidas', icon: HelpCircle, path: '/central-duvidas-admin' },
     { id: 'temas', label: 'Temas', icon: Star, path: '/temas' },
     { id: 'quiz', label: 'Admin Testes', icon: GraduationCap, path: '/testes' },
-    { id: 'listas-exercicios', label: 'Listas de Exercícios', icon: ClipboardList, path: '/listas-exercicios' },
     { id: 'dissertativas', label: 'Questões Dissertativas', icon: FileText, path: '/questoes-dissertativas' },
     { id: 'frequencia-pagamentos', label: 'Frequência e Pagamentos', icon: CalendarCheck, path: '/frequencia-pagamentos' },
   ];
