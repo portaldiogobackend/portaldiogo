@@ -7,7 +7,7 @@ import { supabase } from '@/lib/supabase';
 import { capitalizeWords } from '@/lib/utils';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { ChevronLeft, FileText, Filter, Menu, Pencil, Search, Trash2, Upload, X } from 'lucide-react';
+import { ChevronLeft, FileText, Filter, Menu, Pencil, Search, Send, Trash2, Upload, X } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
@@ -71,6 +71,14 @@ interface EnvioDissertativa {
   nota?: number | null;
   corrigida: boolean | null;
   corrigido_em: string | null;
+}
+
+interface DestinoDissertativa {
+  id: string;
+  questao_id: string;
+  aluno_id: string;
+  professor_id: string;
+  enviado_em: string;
 }
 
 type QuillEditor = ReturnType<ReactQuill['getEditor']>;
@@ -185,11 +193,15 @@ export default function QuestoesDissertativas() {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isCorrectionModalOpen, setIsCorrectionModalOpen] = useState(false);
+  const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [assigning, setAssigning] = useState(false);
 
   const [currentQuestao, setCurrentQuestao] = useState<QuestaoDissertativa | null>(null);
   const [currentEnvio, setCurrentEnvio] = useState<EnvioDissertativa | null>(null);
+  const [currentAssignQuestao, setCurrentAssignQuestao] = useState<QuestaoDissertativa | null>(null);
+  const [assignAlunoId, setAssignAlunoId] = useState('');
   const enunciadoRef = useRef<ReactQuill | null>(null);
   const respostaRef = useRef<ReactQuill | null>(null);
   const [formData, setFormData] = useState({
@@ -342,6 +354,18 @@ export default function QuestoesDissertativas() {
     setCurrentQuestao(null);
   };
 
+  const openAssign = (questao: QuestaoDissertativa) => {
+    setCurrentAssignQuestao(questao);
+    setAssignAlunoId('');
+    setIsAssignModalOpen(true);
+  };
+
+  const closeAssign = () => {
+    setIsAssignModalOpen(false);
+    setCurrentAssignQuestao(null);
+    setAssignAlunoId('');
+  };
+
   const openCorrection = (envio: EnvioDissertativa) => {
     setCurrentEnvio(envio);
     setCorrectionForm({
@@ -435,6 +459,52 @@ export default function QuestoesDissertativas() {
     } catch (error) {
       console.error('Erro ao excluir questão:', error);
       showToast('Erro ao excluir questão.', 'error');
+    }
+  };
+
+  const handleAssign = async () => {
+    if (!currentAssignQuestao) return;
+    if (!assignAlunoId) {
+      showToast('Selecione o aluno.', 'error');
+      return;
+    }
+    if (!currentUserId) {
+      showToast('Usuário não identificado.', 'error');
+      return;
+    }
+    setAssigning(true);
+    try {
+      const { data: existing } = await supabase
+        .from('tbf_questoes_dissertativas_destinos')
+        .select('id')
+        .eq('questao_id', currentAssignQuestao.id)
+        .eq('aluno_id', assignAlunoId)
+        .maybeSingle();
+      if (existing) {
+        showToast('Questão já enviada para este aluno.', 'error');
+        setAssigning(false);
+        return;
+      }
+
+      const payload: Partial<DestinoDissertativa> = {
+        questao_id: currentAssignQuestao.id,
+        aluno_id: assignAlunoId,
+        professor_id: currentUserId,
+        enviado_em: new Date().toISOString()
+      };
+
+      const { error } = await supabase
+        .from('tbf_questoes_dissertativas_destinos')
+        .insert([payload]);
+      if (error) throw error;
+
+      showToast('Questão enviada ao aluno!', 'success');
+      closeAssign();
+    } catch (error) {
+      console.error('Erro ao enviar questão:', error);
+      showToast('Erro ao enviar questão.', 'error');
+    } finally {
+      setAssigning(false);
     }
   };
 
@@ -899,6 +969,13 @@ export default function QuestoesDissertativas() {
                           <td className="py-4 px-4 text-right">
                             <div className="flex justify-end gap-2">
                               <button
+                                onClick={() => openAssign(questao)}
+                                className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                                title="Enviar para aluno"
+                              >
+                                <Send size={18} />
+                              </button>
+                              <button
                                 onClick={() => openEdit(questao)}
                                 className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
                                 title="Editar"
@@ -1173,6 +1250,43 @@ export default function QuestoesDissertativas() {
             </Button>
           </div>
         </div>
+      </Modal>
+
+      <Modal
+        isOpen={isAssignModalOpen}
+        onClose={closeAssign}
+        title="Enviar Questão para Aluno"
+        className="max-w-3xl max-h-[90vh] overflow-y-auto"
+      >
+        {currentAssignQuestao ? (
+          <div className="space-y-6">
+            <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
+              <p className="text-sm font-bold text-gray-500 mb-2">Questão</p>
+              <MathContent html={currentAssignQuestao.enunciado} />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700">Aluno</label>
+              <select
+                value={assignAlunoId}
+                onChange={(e) => setAssignAlunoId(e.target.value)}
+                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-700 focus:ring-2 focus:ring-[#4318FF] outline-none"
+              >
+                <option value="">Selecione</option>
+                {alunos.map(aluno => (
+                  <option key={aluno.id} value={aluno.id}>{capitalizeWords(`${aluno.nome} ${aluno.sobrenome || ''}`.trim())}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex gap-4 pt-4 border-t border-gray-100">
+              <Button variant="ghost" onClick={closeAssign} className="flex-1">
+                Cancelar
+              </Button>
+              <Button onClick={handleAssign} className="flex-1 bg-[#4318FF] hover:bg-[#3311CC]" isLoading={assigning}>
+                Enviar Questão
+              </Button>
+            </div>
+          </div>
+        ) : null}
       </Modal>
 
       <Modal
