@@ -53,6 +53,10 @@ interface EnvioDissertativa {
   corrigido_em: string | null;
 }
 
+interface DestinoDissertativa {
+  questao_id: string;
+}
+
 const renderLatex = (html: string) => {
   if (!html) return '';
   const replacements: Array<{ regex: RegExp; displayMode: boolean }> = [
@@ -141,13 +145,30 @@ export const StudentDissertativas: React.FC = () => {
       setSeries((seriesData as Serie[]) || []);
       setTemas((temasData as Tema[]) || []);
 
-      let questoesQuery = supabase.from('tbf_questoes_dissertativas').select('*').order('created_at', { ascending: false });
-      if (userData?.idserie) questoesQuery = questoesQuery.eq('idserie', userData.idserie);
+      const { data: destinosData } = await supabase
+        .from('tbf_questoes_dissertativas_destinos')
+        .select('questao_id')
+        .eq('aluno_id', user.id);
+
+      const questaoIds = (destinosData as DestinoDissertativa[] | null)?.map(d => d.questao_id) || [];
+
+      const generalQuery = supabase.from('tbf_questoes_dissertativas').select('*').order('created_at', { ascending: false });
+      if (userData?.idserie) generalQuery.eq('idserie', userData.idserie);
       if (userData?.idmat && userData.idmat.length > 0) {
-        questoesQuery = questoesQuery.in('idmat', userData.idmat);
+        generalQuery.in('idmat', userData.idmat);
       }
-      const { data: questoesData } = await questoesQuery;
-      setQuestoes((questoesData as QuestaoDissertativa[]) || []);
+
+      const [generalRes, assignedRes] = await Promise.all([
+        generalQuery,
+        questaoIds.length > 0
+          ? supabase.from('tbf_questoes_dissertativas').select('*').in('id', questaoIds).order('created_at', { ascending: false })
+          : Promise.resolve({ data: [] as QuestaoDissertativa[] | null })
+      ]);
+
+      const combined = [...(generalRes.data as QuestaoDissertativa[] | null || []), ...(assignedRes.data as QuestaoDissertativa[] | null || [])];
+      const uniqueById = Array.from(new Map(combined.map(item => [item.id, item])).values());
+      uniqueById.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      setQuestoes(uniqueById);
 
       const { data: enviosData } = await supabase
         .from('tbf_questoes_dissertativas_envios')
