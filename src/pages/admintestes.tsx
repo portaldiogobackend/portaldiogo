@@ -4,7 +4,7 @@ import { Spinner } from '@/components/ui/Spinner';
 import { Toast, type ToastType } from '@/components/ui/Toast';
 import { supabase } from '@/lib/supabase';
 import { AlertTriangle, ArrowUpDown, ChevronLeft, ClipboardList, FileText, Filter, Menu, Minus, Pencil, Plus, Search, Trash2, Upload, X } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
 import { useNavigate } from 'react-router-dom';
@@ -49,6 +49,8 @@ interface Teste {
   justificativa: string;
   created_at: string;
 }
+
+type SelectItemBase = { id: string };
 
 // Order for series display
 const SERIES_ORDER = [
@@ -154,15 +156,11 @@ export default function AdminTestes() {
     idseries: [] as string[]
   });
 
-  const showToast = (message: string, type: ToastType) => {
+  const showToast = useCallback((message: string, type: ToastType) => {
     setToast({ message, type });
-  };
-
-  useEffect(() => {
-    fetchInitialData();
   }, []);
 
-  const fetchInitialData = async () => {
+  const fetchInitialData = useCallback(async () => {
     setLoading(true);
     try {
       // Fetch user data
@@ -235,7 +233,11 @@ export default function AdminTestes() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [showToast]);
+
+  useEffect(() => {
+    fetchInitialData();
+  }, [fetchInitialData]);
 
   // Filter temas based on selected materias and series
   const filteredTemas = useMemo(() => {
@@ -322,7 +324,7 @@ export default function AdminTestes() {
   }, [alunos, massiveFormData.idmat, massiveFormData.idseries]);
 
   // Helper to get names from IDs for sorting
-  const getTesteNamesForSort = (teste: Teste, type: 'materia' | 'tema' | 'serie') => {
+  const getTesteNamesForSort = useCallback((teste: Teste, type: 'materia' | 'tema' | 'serie') => {
     if (type === 'materia') {
       return materias
         .filter(m => teste.idmat?.includes(m.id))
@@ -342,7 +344,7 @@ export default function AdminTestes() {
         .join(', ') || '';
     }
     return '';
-  };
+  }, [materias, temas, series]);
 
   // Report filters logic
   const hasActiveReportFilters = reportFilterMateria || reportFilterTema || reportFilterSerie || reportSearchTerm;
@@ -409,7 +411,7 @@ export default function AdminTestes() {
     }
 
     return result;
-  }, [testes, reportFilterMateria, reportFilterTema, reportFilterSerie, reportSearchTerm, reportSortConfig, materias, temas, series]);
+  }, [testes, reportFilterMateria, reportFilterTema, reportFilterSerie, reportSearchTerm, reportSortConfig, getTesteNamesForSort]);
 
   const handleLogout = async () => {
     try {
@@ -613,9 +615,10 @@ export default function AdminTestes() {
 
           if (error) throw error;
           successCount++;
-        } catch (err: any) {
+        } catch (err) {
           console.error(`Error importing line ${i + 1}:`, err);
-          errors.push(`Linha ${i + 1}: Erro ao salvar no banco - ${err.message}`);
+          const message = err instanceof Error ? err.message : 'Erro desconhecido';
+          errors.push(`Linha ${i + 1}: Erro ao salvar no banco - ${message}`);
         }
       }
 
@@ -697,7 +700,7 @@ export default function AdminTestes() {
     }
   };
 
-  const handleToggleAll = (items: any[], field: 'idmat' | 'idseries' | 'idtema' | 'idalunos') => {
+  const handleToggleAll = <T extends SelectItemBase>(items: T[], field: 'idmat' | 'idseries' | 'idtema' | 'idalunos') => {
     setFormData(prev => {
       const itemIds = items.map(i => i.id);
       const current = prev[field];
@@ -721,7 +724,7 @@ export default function AdminTestes() {
     });
   };
 
-  const handleMassiveToggleAll = (items: any[], field: 'idmat' | 'idseries' | 'idtema' | 'idalunos') => {
+  const handleMassiveToggleAll = <T extends SelectItemBase>(items: T[], field: 'idmat' | 'idseries' | 'idtema' | 'idalunos') => {
     setMassiveFormData(prev => {
       const itemIds = items.map(i => i.id);
       const current = prev[field];
@@ -910,7 +913,7 @@ export default function AdminTestes() {
   };
 
   // Multi-select checkbox component
-  const MultiSelect = ({ 
+  const MultiSelect = <T extends SelectItemBase>({ 
     label, 
     items, 
     selectedIds, 
@@ -922,14 +925,14 @@ export default function AdminTestes() {
     renderLabel
   }: { 
     label: string, 
-    items: any[], 
+    items: T[], 
     selectedIds: string[], 
     onToggle: (id: string) => void,
-    onToggleAll: (items: any[]) => void,
-    displayProp?: string,
+    onToggleAll: (items: T[]) => void,
+    displayProp?: keyof T,
     maxHeight?: string,
     subtitle?: React.ReactNode,
-    renderLabel?: (item: any) => React.ReactNode
+    renderLabel?: (item: T) => React.ReactNode
   }) => {
     const allSelected = items.length > 0 && items.every(item => selectedIds.includes(item.id));
     
@@ -967,7 +970,7 @@ export default function AdminTestes() {
                   className="w-4 h-4 text-[#4318FF] border-gray-300 rounded focus:ring-[#4318FF]"
                 />
                 <label htmlFor={`${label}-${item.id}`} className="text-sm text-gray-700 cursor-pointer select-none">
-                  {renderLabel ? renderLabel(item) : (displayProp ? item[displayProp] : '')}
+                  {renderLabel ? renderLabel(item) : (displayProp ? String(item[displayProp] ?? '') : '')}
                 </label>
               </div>
             ))
