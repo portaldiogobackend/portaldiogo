@@ -8,6 +8,16 @@ import { Header } from '../components/layout/Header';
 
 // Tipos para o estado do modal de recuperação
 type ResetPasswordStatus = 'idle' | 'loading' | 'success' | 'error';
+type AuthUser = {
+  id: string;
+  email?: string | null;
+  user_metadata?: {
+    name?: string;
+    first_name?: string;
+    last_name?: string;
+    [key: string]: unknown;
+  };
+};
 
 export const Login: React.FC = () => {
   const navigate = useNavigate();
@@ -28,10 +38,58 @@ export const Login: React.FC = () => {
   const [resetStatus, setResetStatus] = useState<ResetPasswordStatus>('idle');
   const [isResetLoading, setIsResetLoading] = useState(false);
 
+  const withTimeout = async <T,>(promise: Promise<T>, ms = 15000): Promise<T> => {
+    let timeoutId: number | undefined;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutId = window.setTimeout(() => reject(new Error('Tempo limite ao conectar com o servidor.')), ms);
+    });
+    try {
+      return await Promise.race([promise, timeoutPromise]);
+    } finally {
+      if (timeoutId !== undefined) {
+        clearTimeout(timeoutId);
+      }
+    }
+  };
+
+  const getOrCreateUserProfile = async (user: AuthUser) => {
+    const { data: existingProfile, error: fetchError } = await supabase
+      .from('tbf_controle_user')
+      .select('role, signature')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    if (fetchError) throw fetchError;
+    if (existingProfile) return existingProfile;
+
+    const fullName = typeof user.user_metadata?.name === 'string' ? user.user_metadata.name : '';
+    const firstName = typeof user.user_metadata?.first_name === 'string' ? user.user_metadata.first_name : '';
+    const lastName = typeof user.user_metadata?.last_name === 'string' ? user.user_metadata.last_name : '';
+    const nome = firstName || (fullName ? fullName.split(' ')[0] : 'Aluno');
+    const sobrenome = lastName || (fullName ? fullName.split(' ').slice(1).join(' ') : '');
+
+    const { error: upsertError } = await supabase
+      .from('tbf_controle_user')
+      .upsert([{
+        id: user.id,
+        nome,
+        sobrenome,
+        email: user.email || '',
+        signature: 'inativo',
+        role: 'aluno',
+        emailpai: '',
+        emailaluno: ''
+      }], { onConflict: 'id' });
+
+    if (upsertError) throw upsertError;
+
+    return { role: 'aluno', signature: 'inativo' };
+  };
+
   const handleGoogleLogin = async () => {
     try {
       console.log('[Auth] Iniciando login com Google...');
-      const { error } = await supabase.auth.signInWithOAuth({
+      const { error } = await withTimeout(supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
           redirectTo: `${window.location.origin}/login`,
@@ -40,11 +98,12 @@ export const Login: React.FC = () => {
             prompt: 'select_account',
           },
         },
-      });
+      }));
       if (error) throw error;
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('[Auth] Erro no login com Google:', err);
-      setError(err.message || 'Erro ao conectar com Google.');
+      const message = err instanceof Error ? err.message : 'Erro ao conectar com Google.';
+      setError(message);
     }
   };
 
@@ -55,25 +114,19 @@ export const Login: React.FC = () => {
       if (session?.user) {
         console.log('[Auth] Usuário já possui sessão ativa. Verificando perfil para redirecionamento...');
         try {
-          const { data: userData, error: userError } = await supabase
-            .from('tbf_controle_user')
-            .select('role, signature')
-            .eq('id', session.user.id)
-            .single();
-
-          if (!userError && userData) {
-            if (userData.role === 'aluno') {
-              if (userData.signature === 'ativo') {
-                navigate('/aluno/dashboard');
-              } else {
-                navigate('/aguardando-aprovacao');
-              }
-            } else if (userData.role === 'admin' || userData.role === 'professor') {
-              navigate('/setup-inicial');
+          const userData = await getOrCreateUserProfile(session.user);
+          if (userData.role === 'aluno') {
+            if (userData.signature === 'ativo') {
+              navigate('/aluno/dashboard');
+            } else {
+              navigate('/aguardando-aprovacao');
             }
+          } else if (userData.role === 'admin' || userData.role === 'professor') {
+            navigate('/setup-inicial');
           }
         } catch (err) {
           console.error('[Auth] Erro ao verificar sessão existente:', err);
+          setError('Erro ao carregar seu perfil. Por favor, tente novamente.');
         }
       }
     };
@@ -100,10 +153,10 @@ export const Login: React.FC = () => {
     console.log('[Auth] Iniciando tentativa de login para:', email);
     
     try {
-      const { data, error: authError } = await supabase.auth.signInWithPassword({
+      const { data, error: authError } = await withTimeout(supabase.auth.signInWithPassword({
         email,
         password,
-      });
+      }));
 
       console.log('[Auth] Resposta do Supabase Auth:', { data, error: authError });
 
@@ -112,22 +165,8 @@ export const Login: React.FC = () => {
       if (data.user) {
         console.log('[Auth] Login bem-sucedido para:', data.user.email);
         
-        // Buscar role e signature do usuário para redirecionamento correto
         console.log('[Database] Buscando perfil para ID:', data.user.id);
-        const { data: userData, error: userError } = await supabase
-          .from('tbf_controle_user')
-          .select('role, signature')
-          .eq('id', data.user.id)
-          .single();
-
-        if (userError) {
-          console.error('[Database] Erro ao buscar dados do usuário:', userError);
-          // Em caso de erro, não assume que é admin. Tenta deslogar e mostrar erro.
-          await supabase.auth.signOut();
-          setError('Erro ao carregar seu perfil. Por favor, tente novamente.');
-          return;
-        }
-
+        const userData = await getOrCreateUserProfile(data.user);
         console.log('[Auth] Perfil carregado com sucesso:', userData);
 
         // Lógica de redirecionamento baseada em role e signature
@@ -149,9 +188,10 @@ export const Login: React.FC = () => {
           await supabase.auth.signOut();
         }
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('[Auth] Erro no login:', err);
-      setError(err.message || 'E-mail ou senha incorretos.');
+      const message = err instanceof Error ? err.message : 'E-mail ou senha incorretos.';
+      setError(message);
     } finally {
       setIsLoading(false);
     }
