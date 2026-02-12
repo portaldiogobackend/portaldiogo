@@ -18,6 +18,7 @@ import { Temas } from './pages/Temas';
 import { TesteAlunos } from './pages/TesteAlunos';
 import AdminTestes from '@/pages/admintestes';
 import ProtectedAdminRoute from '@/components/layout/ProtectedAdminRoute';
+import ListasExercicios from './pages/ListasExercicios';
 import QuestoesDissertativas from './pages/QuestoesDissertativas';
 import { StudentDissertativas } from './pages/StudentDissertativas';
 import { FrequenciaPagamentos } from './pages/FrequenciaPagamentos';
@@ -38,6 +39,7 @@ function App() {
         <Route path="/materias" element={<Materias />} />
         <Route path="/central-duvidas-admin" element={<CentralDuvidasAdmin />} />
         <Route path="/temas" element={<Temas />} />
+        <Route path="/listas-exercicios" element={<ListasExercicios />} />
         <Route path="/questoes-dissertativas" element={<QuestoesDissertativas />} />
         <Route path="/frequencia-pagamentos" element={<FrequenciaPagamentos />} />
         <Route
@@ -54,6 +56,7 @@ function App() {
         <Route path="/aluno/dashboard" element={<StudentDashboard />} />
         <Route path="/aluno/materias" element={<StudentMaterias />} />
         <Route path="/aluno/testes" element={<TesteAlunos />} />
+        <Route path="/aluno/listas-exercicios" element={<ListasExercicios />} />
         <Route path="/aluno/questoes-dissertativas" element={<StudentDissertativas />} />
         <Route path="/aluno/central-duvidas" element={<CentralDuvidas />} />
       </Routes>
