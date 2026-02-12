@@ -85,22 +85,69 @@ export const Login: React.FC = () => {
       if (session?.user) {
         console.log('[Auth] Usuário já possui sessão ativa. Verificando perfil para redirecionamento...');
         try {
-          const { data: userData, error: userError } = await supabase
+          const { data: initialUserData, error: initialUserError } = await supabase
             .from('tbf_controle_user')
             .select('role, signature')
             .eq('id', session.user.id)
-            .single();
+            .maybeSingle();
 
-          if (!userError && userData) {
-            if (userData.role === 'aluno') {
-              if (userData.signature === 'ativo') {
-                navigate('/aluno/dashboard');
-              } else {
-                navigate('/aguardando-aprovacao');
-              }
-            } else if (userData.role === 'admin' || userData.role === 'professor') {
-              navigate('/setup-inicial');
+          if (initialUserError) {
+            throw initialUserError;
+          }
+          let userData = initialUserData;
+
+          if (!userData) {
+            const userEmail = session.user.email || '';
+            const { data: byEmail } = await supabase
+              .from('tbf_controle_user')
+              .select('id, role, signature')
+              .eq('email', userEmail)
+              .maybeSingle();
+
+            if (byEmail?.id && byEmail.id !== session.user.id) {
+              setError('Seu e-mail já está cadastrado. Faça login por e-mail e senha ou solicite vinculação.');
+              await supabase.auth.signOut();
+              return;
             }
+
+            if (!byEmail) {
+              const meta = session.user.user_metadata || {};
+              const fullName = `${meta.full_name || meta.name || ''}`.trim();
+              const nameParts = fullName.split(' ').filter(Boolean);
+              const nome = `${meta.given_name || nameParts[0] || userEmail.split('@')[0] || 'Usuário'}`.trim();
+              const sobrenome = `${meta.family_name || nameParts.slice(1).join(' ') || ''}`.trim();
+              const profile = {
+                id: session.user.id,
+                nome,
+                sobrenome,
+                email: userEmail,
+                signature: 'inativo',
+                role: 'aluno',
+                emailpai: '',
+                emailaluno: ''
+              };
+              const { error: insertError } = await supabase
+                .from('tbf_controle_user')
+                .insert([profile]);
+              if (insertError) {
+                setError('Erro ao criar perfil. Por favor, tente novamente.');
+                await supabase.auth.signOut();
+                return;
+              }
+              userData = { role: profile.role, signature: profile.signature };
+            } else {
+              userData = { role: byEmail.role, signature: byEmail.signature };
+            }
+          }
+
+          if (userData.role === 'aluno') {
+            if (userData.signature === 'ativo') {
+              navigate('/aluno/dashboard');
+            } else {
+              navigate('/aguardando-aprovacao');
+            }
+          } else if (userData.role === 'admin' || userData.role === 'professor') {
+            navigate('/setup-inicial');
           }
         } catch (err) {
           console.error('[Auth] Erro ao verificar sessão existente:', err);
