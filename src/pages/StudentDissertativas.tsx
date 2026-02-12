@@ -48,6 +48,7 @@ interface EnvioDissertativa {
   tipo_resposta: 'texto' | 'imagem';
   enviado_em: string;
   comentario_professor: string | null;
+  nota?: number | null;
   corrigida: boolean | null;
   corrigido_em: string | null;
 }
@@ -99,6 +100,7 @@ export const StudentDissertativas: React.FC = () => {
 
   const [respostasTexto, setRespostasTexto] = useState<Record<string, string>>({});
   const [respostasImagem, setRespostasImagem] = useState<Record<string, File | null>>({});
+  const [respostasImagemUrl, setRespostasImagemUrl] = useState<Record<string, string>>({});
   const [sendingId, setSendingId] = useState<string | null>(null);
 
   const showToast = useCallback((message: string, type: ToastType) => {
@@ -171,6 +173,9 @@ export const StudentDissertativas: React.FC = () => {
 
   const handleFileChange = (questaoId: string, file: File | null) => {
     setRespostasImagem(prev => ({ ...prev, [questaoId]: file }));
+    if (file) {
+      setRespostasImagemUrl(prev => ({ ...prev, [questaoId]: '' }));
+    }
   };
 
   const handleSubmit = async (questao: QuestaoDissertativa) => {
@@ -183,11 +188,16 @@ export const StudentDissertativas: React.FC = () => {
 
     const texto = respostasTexto[questao.id]?.trim() || '';
     const imagem = respostasImagem[questao.id] || null;
-    if (!texto && !imagem) {
+    const imagemUrl = respostasImagemUrl[questao.id]?.trim() || '';
+    const hasTexto = !!texto;
+    const hasImagemFile = !!imagem;
+    const hasImagemUrl = !!imagemUrl;
+    const total = [hasTexto, hasImagemFile, hasImagemUrl].filter(Boolean).length;
+    if (total === 0) {
       showToast('Envie uma resposta em texto ou imagem.', 'error');
       return;
     }
-    if (texto && imagem) {
+    if (total > 1) {
       showToast('Escolha apenas uma forma de resposta.', 'error');
       return;
     }
@@ -209,12 +219,14 @@ export const StudentDissertativas: React.FC = () => {
       let payload: Partial<EnvioDissertativa> = {
         questao_id: questao.id,
         aluno_id: currentUserId,
-        tipo_resposta: texto ? 'texto' : 'imagem',
+        tipo_resposta: hasTexto ? 'texto' : 'imagem',
         enviado_em: new Date().toISOString()
       };
 
-      if (texto) {
+      if (hasTexto) {
         payload = { ...payload, resposta_texto: texto };
+      } else if (hasImagemUrl) {
+        payload = { ...payload, resposta_imagem_url: imagemUrl };
       } else if (imagem) {
         const bucket = 'dissertativas-respostas';
         const filePath = `${currentUserId}/${questao.id}/${Date.now()}-${imagem.name}`;
@@ -237,6 +249,7 @@ export const StudentDissertativas: React.FC = () => {
       setEnvios(prev => [data as EnvioDissertativa, ...prev]);
       setRespostasTexto(prev => ({ ...prev, [questao.id]: '' }));
       setRespostasImagem(prev => ({ ...prev, [questao.id]: null }));
+      setRespostasImagemUrl(prev => ({ ...prev, [questao.id]: '' }));
       showToast('Resposta enviada com sucesso!', 'success');
     } catch (error) {
       console.error('Erro ao enviar resposta:', error);
@@ -362,10 +375,29 @@ export const StudentDissertativas: React.FC = () => {
                                 )}
                               </label>
                             </div>
+                            <input
+                              type="text"
+                              value={respostasImagemUrl[questao.id] || ''}
+                              onChange={(e) => {
+                                const value = e.target.value;
+                                setRespostasImagemUrl(prev => ({ ...prev, [questao.id]: value }));
+                                if (value) {
+                                  setRespostasImagem(prev => ({ ...prev, [questao.id]: null }));
+                                }
+                              }}
+                              className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-700 focus:ring-2 focus:ring-[#4318FF] outline-none"
+                              placeholder="Cole a URL de uma imagem"
+                            />
                             {respostasImagem[questao.id] && (
                               <div className="flex items-center gap-2 text-xs text-gray-500">
                                 <ImageIcon size={14} />
                                 <span>Imagem selecionada</span>
+                              </div>
+                            )}
+                            {!respostasImagem[questao.id] && respostasImagemUrl[questao.id] && (
+                              <div className="flex items-center gap-2 text-xs text-gray-500">
+                                <ImageIcon size={14} />
+                                <span>Imagem da internet selecionada</span>
                               </div>
                             )}
                           </div>
@@ -393,6 +425,11 @@ export const StudentDissertativas: React.FC = () => {
                             {envio.corrigida && envio.comentario_professor && (
                               <div className="mt-3 text-sm text-blue-700">
                                 <span className="font-medium">Comentário do professor:</span> {envio.comentario_professor}
+                              </div>
+                            )}
+                            {envio.corrigida && (envio.nota !== null && envio.nota !== undefined) && (
+                              <div className="mt-2 text-sm text-blue-700">
+                                <span className="font-medium">Nota:</span> {envio.nota}
                               </div>
                             )}
                           </div>
