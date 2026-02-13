@@ -18,23 +18,6 @@ import { useNavigate } from 'react-router-dom';
 import { LogoutModal } from '../components/layout/LogoutModal';
 import { Sidebar } from '../components/layout/Sidebar';
 
-interface RecentUser {
-  id: string;
-  nome?: string | null;
-  sobrenome?: string | null;
-  email?: string | null;
-  role?: string | null;
-}
-
-interface KPICardProps {
-  title: string;
-  value: string | number;
-  icon: React.ComponentType<{ size?: number }>;
-  color: string;
-  bg: string;
-  onClick?: () => void;
-}
-
 export const SetupInicial: React.FC = () => {
   const navigate = useNavigate();
   
@@ -50,7 +33,7 @@ export const SetupInicial: React.FC = () => {
   });
   
   // State for Lists/Charts
-  const [recentUsers, setRecentUsers] = useState<RecentUser[]>([]);
+  const [recentUsers, setRecentUsers] = useState<any[]>([]);
   const [testesByMateria, setTestesByMateria] = useState<{name: string, count: number, percentage: number}[]>([]);
 
   // User info
@@ -175,7 +158,7 @@ export const SetupInicial: React.FC = () => {
     }
   };
 
-  const KPICard = ({ title, value, icon: Icon, color, bg, onClick }: KPICardProps) => (
+  const KPICard = ({ title, value, icon: Icon, color, bg, onClick }: any) => (
     <div 
       onClick={onClick}
       className={`bg-white p-6 rounded-2xl shadow-xl shadow-gray-200/40 hover:shadow-gray-200/60 transition-all duration-300 group flex items-center justify-between cursor-pointer transform hover:-translate-y-1`}

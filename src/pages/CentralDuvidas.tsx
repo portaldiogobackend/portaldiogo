@@ -1,4 +1,4 @@
-import React, { useCallback, useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { StudentSidebar } from '../components/layout/StudentSidebar';
@@ -33,17 +33,9 @@ interface Duvida {
   idmateria: string;
   materiaName?: string;
   pergunta: string;
-  resposta?: string | null;
+  resposta?: string;
   created_at: string;
   respondido: boolean;
-}
-
-interface DuvidaDb {
-  id: string;
-  idmateria: string;
-  pergunta: string;
-  resposta?: string | null;
-  created_at: string;
 }
 
 export const CentralDuvidas: React.FC = () => {
@@ -74,9 +66,13 @@ export const CentralDuvidas: React.FC = () => {
   // Notification State
   const [toast, setToast] = useState<{ message: string; type: ToastType } | null>(null);
 
-  const showToast = useCallback((message: string, type: ToastType) => {
+  const showToast = (message: string, type: ToastType) => {
     setToast({ message, type });
     console.log(`[${type.toUpperCase()}] ${message}`);
+  };
+
+  useEffect(() => {
+    checkUserAndFetchData();
   }, []);
 
   // Debug: Monitor state changes for problematic values
@@ -89,29 +85,7 @@ export const CentralDuvidas: React.FC = () => {
     }
   }, [userId, selectedMateria]);
 
-  const fetchDuvidas = useCallback(async (uid: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('tbf_duvidas')
-        .select('*')
-        .eq('idaluno', uid)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-
-      const enrichedDuvidas = ((data as DuvidaDb[]) || []).map(d => ({
-        ...d,
-        materiaName: 'Carregando...',
-        respondido: !!d.resposta && d.resposta.trim() !== ''
-      }));
-
-      setDuvidas(enrichedDuvidas);
-    } catch (error) {
-      console.error('Error fetching duvidas:', error);
-    }
-  }, []);
-
-  const checkUserAndFetchData = useCallback(async () => {
+  const checkUserAndFetchData = async () => {
     try {
       setLoading(true);
       const { data: { user } } = await supabase.auth.getUser();
@@ -166,11 +140,29 @@ export const CentralDuvidas: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [fetchDuvidas, navigate, showToast]);
+  };
 
-  useEffect(() => {
-    checkUserAndFetchData();
-  }, [checkUserAndFetchData]);
+  const fetchDuvidas = async (uid: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('tbf_duvidas')
+        .select('*')
+        .eq('idaluno', uid)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      const enrichedDuvidas = (data || []).map((d: any) => ({
+        ...d,
+        materiaName: 'Carregando...',
+        respondido: !!d.resposta && d.resposta.trim() !== ''
+      }));
+
+      setDuvidas(enrichedDuvidas);
+    } catch (error) {
+      console.error('Error fetching duvidas:', error);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -237,17 +229,16 @@ export const CentralDuvidas: React.FC = () => {
       closeModal();
       fetchDuvidas(userId as string);
 
-    } catch (err) {
-      const errorObj = err as { message?: string; code?: string; details?: string; hint?: string };
+    } catch (error: any) {
       console.error('Error saving doubt details:', {
-        message: errorObj?.message,
-        code: errorObj?.code,
-        details: errorObj?.details,
-        hint: errorObj?.hint,
+        message: error.message,
+        code: error.code,
+        details: error.details,
+        hint: error.hint,
         context: editingDuvida ? 'update' : 'insert'
       });
       
-      const errorMessage = errorObj?.code === '22P02' 
+      const errorMessage = error.code === '22P02' 
         ? 'Erro de formato nos dados. Por favor, contate o suporte.' 
         : 'Erro ao salvar dúvida. Tente novamente.';
         

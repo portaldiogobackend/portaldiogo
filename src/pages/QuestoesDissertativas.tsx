@@ -115,7 +115,7 @@ const renderLatex = (html: string) => {
   const replacements: Array<{ regex: RegExp; displayMode: boolean }> = [
     { regex: /\$\$([\s\S]+?)\$\$/g, displayMode: true },
     { regex: /\\\[((?:.|\n)+?)\\\]/g, displayMode: true },
-    { regex: /\$([^$]+?)\$/g, displayMode: false },
+    { regex: /\$([^\$]+?)\$/g, displayMode: false },
     { regex: /\\\((.+?)\\\)/g, displayMode: false }
   ];
 
@@ -222,11 +222,11 @@ export default function QuestoesDissertativas() {
 
   const isStaff = userRole === 'admin' || userRole === 'professor';
 
-  const showToast = useCallback((message: string, type: ToastType) => {
+  const showToast = (message: string, type: ToastType) => {
     setToast({ message, type });
-  }, []);
+  };
 
-  const fetchInitialData = useCallback(async () => {
+  const fetchInitialData = async () => {
     setLoading(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -290,11 +290,11 @@ export default function QuestoesDissertativas() {
     } finally {
       setLoading(false);
     }
-  }, [navigate, showToast]);
+  };
 
   useEffect(() => {
     fetchInitialData();
-  }, [fetchInitialData]);
+  }, []);
 
   const filteredQuestoes = useMemo(() => {
     const term = searchTerm.toLowerCase();
@@ -644,9 +644,8 @@ export default function QuestoesDissertativas() {
             }]);
           if (error) throw error;
           successCount++;
-        } catch (err) {
-          const message = err instanceof Error ? err.message : 'Erro desconhecido';
-          errors.push(`Linha ${lineIndex}: Erro ao salvar no banco - ${message}`);
+        } catch (err: any) {
+          errors.push(`Linha ${lineIndex}: Erro ao salvar no banco - ${err.message}`);
         }
       }
 

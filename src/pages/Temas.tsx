@@ -8,7 +8,7 @@ import { Toast } from '@/components/ui/Toast';
 import { supabase } from '@/lib/supabase';
 import { capitalizeWords } from '@/lib/utils';
 import { ArrowUpDown, Edit2, Filter, Menu, Plus, Search, Trash2, X } from 'lucide-react';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Sidebar } from '../components/layout/Sidebar';
 
 interface Tema {
@@ -29,19 +29,7 @@ interface Serie {
   serie: string;
 }
 
-const SERIES_ORDER = [
-  'Quinto Ano Fundamental',
-  'Sexto Ano Fundamental',
-  'Sétimo Ano Fundamental',
-  'Oitavo Ano Fundamental',
-  'Nono Ano Fundamental',
-  'Primeiro Ano Ensino Médio',
-  'Segundo Ano Ensino Médio',
-  'Terceiro Ano Ensino Médio',
-  'Outros'
-];
-
-const MultiSelect = <T extends { id: string }>({ 
+const MultiSelect = ({ 
   label, 
   items, 
   selectedIds, 
@@ -50,10 +38,10 @@ const MultiSelect = <T extends { id: string }>({
   onToggle
 }: { 
   label: string, 
-  items: T[], 
+  items: any[], 
   selectedIds: string[], 
   field: 'idmat' | 'idseries',
-  displayProp: keyof T,
+  displayProp: string,
   onToggle: (id: string, field: 'idmat' | 'idseries') => void
 }) => (
   <div className="space-y-2">
@@ -72,7 +60,7 @@ const MultiSelect = <T extends { id: string }>({
               className="w-4 h-4 text-[#4318FF] border-gray-300 rounded focus:ring-[#4318FF]"
             />
             <label htmlFor={`${field}-${item.id}`} className="text-sm text-gray-700 cursor-pointer select-none">
-              {String(item[displayProp] ?? '')}
+              {item[displayProp]}
             </label>
           </div>
         ))
@@ -112,11 +100,11 @@ export const Temas: React.FC = () => {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [userName, setUserName] = useState<string>('Admin');
 
-  const showToast = useCallback((message: string, type: ToastType) => {
+  const showToast = (message: string, type: ToastType) => {
     setToast({ message, type });
-  }, []);
+  };
 
-  const fetchData = useCallback(async () => {
+  const fetchData = async () => {
     setLoading(true);
     try {
       // Fetch Temas
@@ -176,11 +164,11 @@ export const Temas: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [showToast]);
+  };
 
   useEffect(() => {
     fetchData();
-  }, [fetchData]);
+  }, []);
 
   const handleOpenModal = (tema?: Tema) => {
     if (tema) {
@@ -325,14 +313,25 @@ export const Temas: React.FC = () => {
     return 0;
   });
 
-  const getNamesFromIds = <T extends { id: string }>(ids: string[], source: T[], displayProp: keyof T) => {
+  const getNamesFromIds = (ids: string[], source: any[], displayProp: string) => {
     if (!ids || ids.length === 0) return '-';
     return ids
       .map(id => source.find(item => item.id === id)?.[displayProp])
       .filter(Boolean)
-      .map(value => String(value))
       .join(', ');
   };
+
+  const SERIES_ORDER = [
+  'Quinto Ano Fundamental',
+  'Sexto Ano Fundamental',
+  'Sétimo Ano Fundamental',
+  'Oitavo Ano Fundamental',
+  'Nono Ano Fundamental',
+  'Primeiro Ano Ensino Médio',
+  'Segundo Ano Ensino Médio',
+  'Terceiro Ano Ensino Médio',
+  'Outros'
+];
 
   return (
     <div className="flex h-screen bg-[#F4F7FE] font-sans text-[#2B3674]">

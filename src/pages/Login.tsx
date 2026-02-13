@@ -26,7 +26,6 @@ export const Login: React.FC = () => {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [isOAuthProcessing, setIsOAuthProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Verificar se o cadastro foi realizado com sucesso
@@ -89,7 +88,6 @@ export const Login: React.FC = () => {
 
   const handleGoogleLogin = async () => {
     try {
-      setIsOAuthProcessing(true);
       console.log('[Auth] Iniciando login com Google...');
       const { error } = await withTimeout(supabase.auth.signInWithOAuth({
         provider: 'google',
@@ -106,7 +104,6 @@ export const Login: React.FC = () => {
       console.error('[Auth] Erro no login com Google:', err);
       const message = err instanceof Error ? err.message : 'Erro ao conectar com Google.';
       setError(message);
-      setIsOAuthProcessing(false);
     }
   };
 
@@ -133,39 +130,6 @@ export const Login: React.FC = () => {
         }
       }
     };
-    const exchangeOAuthCode = async () => {
-      const url = new URL(window.location.href);
-      const code = url.searchParams.get('code');
-      const authError = url.searchParams.get('error_description') || url.searchParams.get('error');
-
-      if (authError) {
-        setError(decodeURIComponent(authError));
-        setIsOAuthProcessing(false);
-        return;
-      }
-
-      if (!code) {
-        return;
-      }
-
-      setIsOAuthProcessing(true);
-      const { error: exchangeError } = await withTimeout(supabase.auth.exchangeCodeForSession(code));
-      if (exchangeError) {
-        setError(exchangeError.message || 'Erro ao finalizar login com Google.');
-        setIsOAuthProcessing(false);
-        return;
-      }
-
-      url.searchParams.delete('code');
-      url.searchParams.delete('state');
-      url.searchParams.delete('error');
-      url.searchParams.delete('error_description');
-      window.history.replaceState({}, document.title, `${url.pathname}${url.search}${url.hash}`);
-      setIsOAuthProcessing(false);
-      await checkUser();
-    };
-
-    exchangeOAuthCode();
     checkUser();
 
     // Listener para mudanças de estado de autenticação (ex: após login com Google)
@@ -549,8 +513,7 @@ export const Login: React.FC = () => {
               <button
                 type="button"
                 onClick={handleGoogleLogin}
-                disabled={isOAuthProcessing}
-                className="w-full flex items-center justify-center gap-3 px-6 py-3.5 rounded-xl border-2 border-slate-200 bg-white hover:bg-slate-50 hover:border-slate-300 transition-all duration-200 text-slate-700 font-medium group disabled:opacity-60 disabled:cursor-not-allowed"
+                className="w-full flex items-center justify-center gap-3 px-6 py-3.5 rounded-xl border-2 border-slate-200 bg-white hover:bg-slate-50 hover:border-slate-300 transition-all duration-200 text-slate-700 font-medium group"
               >
                 <svg className="w-5 h-5" viewBox="0 0 24 24">
                   <path
@@ -570,9 +533,7 @@ export const Login: React.FC = () => {
                     d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
                   />
                 </svg>
-                <span className="group-hover:text-slate-900 transition-colors">
-                  {isOAuthProcessing ? 'Processando...' : 'Continuar com Google'}
-                </span>
+                <span className="group-hover:text-slate-900 transition-colors">Continuar com Google</span>
               </button>
 
               {/* Sign Up Link */}
