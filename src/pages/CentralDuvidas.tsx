@@ -152,7 +152,7 @@ export const CentralDuvidas: React.FC = () => {
 
       if (error) throw error;
 
-      const enrichedDuvidas = (data || []).map((d: any) => ({
+      const enrichedDuvidas = ((data || []) as Duvida[]).map(d => ({
         ...d,
         materiaName: 'Carregando...',
         respondido: !!d.resposta && d.resposta.trim() !== ''
@@ -229,16 +229,19 @@ export const CentralDuvidas: React.FC = () => {
       closeModal();
       fetchDuvidas(userId as string);
 
-    } catch (error: any) {
+    } catch (error) {
+      const errorInfo = typeof error === 'object' && error !== null
+        ? (error as { message?: string; code?: string; details?: string; hint?: string })
+        : {};
       console.error('Error saving doubt details:', {
-        message: error.message,
-        code: error.code,
-        details: error.details,
-        hint: error.hint,
+        message: errorInfo.message,
+        code: errorInfo.code,
+        details: errorInfo.details,
+        hint: errorInfo.hint,
         context: editingDuvida ? 'update' : 'insert'
       });
       
-      const errorMessage = error.code === '22P02' 
+      const errorMessage = errorInfo.code === '22P02' 
         ? 'Erro de formato nos dados. Por favor, contate o suporte.' 
         : 'Erro ao salvar dúvida. Tente novamente.';
         

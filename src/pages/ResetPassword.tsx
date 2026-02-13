@@ -94,9 +94,10 @@ export const ResetPassword: React.FC = () => {
       setTimeout(() => {
         navigate('/login');
       }, 3000);
-    } catch (err: any) {
+    } catch (err) {
       console.error('Erro ao redefinir senha:', err);
-      setError(err.message || 'Erro ao redefinir senha. Tente novamente.');
+      const message = err instanceof Error ? err.message : '';
+      setError(message || 'Erro ao redefinir senha. Tente novamente.');
       setStatus('error');
     }
   };

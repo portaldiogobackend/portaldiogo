@@ -62,7 +62,7 @@ const renderLatex = (html: string) => {
   const replacements: Array<{ regex: RegExp; displayMode: boolean }> = [
     { regex: /\$\$([\s\S]+?)\$\$/g, displayMode: true },
     { regex: /\\\[((?:.|\n)+?)\\\]/g, displayMode: true },
-    { regex: /\$([^\$]+?)\$/g, displayMode: false },
+    { regex: /\$([^$]+?)\$/g, displayMode: false },
     { regex: /\\\((.+?)\\\)/g, displayMode: false }
   ];
 

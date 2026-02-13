@@ -29,7 +29,7 @@ interface Serie {
   serie: string;
 }
 
-const MultiSelect = ({ 
+const MultiSelect = <T extends { id: string }>({ 
   label, 
   items, 
   selectedIds, 
@@ -38,10 +38,10 @@ const MultiSelect = ({
   onToggle
 }: { 
   label: string, 
-  items: any[], 
+  items: T[], 
   selectedIds: string[], 
   field: 'idmat' | 'idseries',
-  displayProp: string,
+  displayProp: keyof T & string,
   onToggle: (id: string, field: 'idmat' | 'idseries') => void
 }) => (
   <div className="space-y-2">
@@ -60,7 +60,7 @@ const MultiSelect = ({
               className="w-4 h-4 text-[#4318FF] border-gray-300 rounded focus:ring-[#4318FF]"
             />
             <label htmlFor={`${field}-${item.id}`} className="text-sm text-gray-700 cursor-pointer select-none">
-              {item[displayProp]}
+              {String(item[displayProp])}
             </label>
           </div>
         ))
@@ -313,11 +313,12 @@ export const Temas: React.FC = () => {
     return 0;
   });
 
-  const getNamesFromIds = (ids: string[], source: any[], displayProp: string) => {
+  const getNamesFromIds = <T extends { id: string }>(ids: string[], source: T[], displayProp: keyof T & string) => {
     if (!ids || ids.length === 0) return '-';
     return ids
       .map(id => source.find(item => item.id === id)?.[displayProp])
       .filter(Boolean)
+      .map(value => String(value))
       .join(', ');
   };
 

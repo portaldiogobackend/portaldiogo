@@ -149,7 +149,7 @@ export const FrequenciaPagamentos: React.FC = () => {
       setAlunos((alunosRes.data as Aluno[]) || []);
       setFrequencias((frequenciasRes.data as Frequencia[]) || []);
       setPagamentos((pagamentosRes.data as Pagamento[]) || []);
-    } catch (error) {
+    } catch {
       showToast('Erro ao carregar dados. Verifique as tabelas do banco.', 'error');
     } finally {
       setLoading(false);
@@ -230,7 +230,7 @@ export const FrequenciaPagamentos: React.FC = () => {
       }
       setIsFrequenciaModalOpen(false);
       await fetchInitialData();
-    } catch (error) {
+    } catch {
       showToast('Erro ao salvar frequência.', 'error');
     } finally {
       setSavingFrequencia(false);
@@ -275,7 +275,7 @@ export const FrequenciaPagamentos: React.FC = () => {
       }
       setIsPagamentoModalOpen(false);
       await fetchInitialData();
-    } catch (error) {
+    } catch {
       showToast('Erro ao salvar pagamento.', 'error');
     } finally {
       setSavingPagamento(false);
@@ -297,7 +297,7 @@ export const FrequenciaPagamentos: React.FC = () => {
       showToast('Registro excluído.', 'success');
       await fetchInitialData();
       setIsDeleteModalOpen(false);
-    } catch (error) {
+    } catch {
       showToast('Erro ao excluir registro.', 'error');
     } finally {
       setDeleting(false);

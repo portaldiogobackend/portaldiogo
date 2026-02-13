@@ -115,7 +115,7 @@ const renderLatex = (html: string) => {
   const replacements: Array<{ regex: RegExp; displayMode: boolean }> = [
     { regex: /\$\$([\s\S]+?)\$\$/g, displayMode: true },
     { regex: /\\\[((?:.|\n)+?)\\\]/g, displayMode: true },
-    { regex: /\$([^\$]+?)\$/g, displayMode: false },
+    { regex: /\$([^$]+?)\$/g, displayMode: false },
     { regex: /\\\((.+?)\\\)/g, displayMode: false }
   ];
 
@@ -197,6 +197,8 @@ export default function QuestoesDissertativas() {
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
   const [assigning, setAssigning] = useState(false);
+  const [creatingMateria, setCreatingMateria] = useState(false);
+  const [creatingTema, setCreatingTema] = useState(false);
 
   const [currentQuestao, setCurrentQuestao] = useState<QuestaoDissertativa | null>(null);
   const [currentEnvio, setCurrentEnvio] = useState<EnvioDissertativa | null>(null);
@@ -212,6 +214,8 @@ export default function QuestoesDissertativas() {
     idtema: '',
     professor_id: ''
   });
+  const [newMateriaName, setNewMateriaName] = useState('');
+  const [newTemaName, setNewTemaName] = useState('');
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importLog, setImportLog] = useState<{ success: number; errors: string[] } | null>(null);
   const [correctionForm, setCorrectionForm] = useState({
@@ -324,6 +328,8 @@ export default function QuestoesDissertativas() {
       idtema: '',
       professor_id: currentUserId || ''
     });
+    setNewMateriaName('');
+    setNewTemaName('');
     setIsModalOpen(true);
   };
 
@@ -341,6 +347,8 @@ export default function QuestoesDissertativas() {
       idtema: questao.idtema || '',
       professor_id: questao.professor_id || currentUserId || ''
     });
+    setNewMateriaName('');
+    setNewTemaName('');
     setIsModalOpen(true);
   };
 
@@ -379,6 +387,77 @@ export default function QuestoesDissertativas() {
   const closeCorrection = () => {
     setIsCorrectionModalOpen(false);
     setCurrentEnvio(null);
+  };
+
+  const handleCreateMateria = async () => {
+    const trimmed = newMateriaName.trim();
+    if (!trimmed) {
+      showToast('Digite o nome da disciplina.', 'error');
+      return;
+    }
+    setCreatingMateria(true);
+    try {
+      const { data, error } = await supabase
+        .from('tbf_materias')
+        .insert([{ materia: trimmed }])
+        .select()
+        .single();
+      if (error) throw error;
+      const nextMaterias = [...materias, data as Materia].sort((a, b) =>
+        a.materia.localeCompare(b.materia, 'pt-BR', { sensitivity: 'base' })
+      );
+      setMaterias(nextMaterias);
+      setFormData(prev => ({ ...prev, idmat: (data as Materia).id, idtema: '' }));
+      setNewMateriaName('');
+      showToast('Disciplina criada com sucesso!', 'success');
+    } catch (error) {
+      console.error('Erro ao criar disciplina:', error);
+      showToast('Erro ao criar disciplina.', 'error');
+    } finally {
+      setCreatingMateria(false);
+    }
+  };
+
+  const handleCreateTema = async () => {
+    const trimmed = newTemaName.trim();
+    if (!trimmed) {
+      showToast('Digite o nome do conteúdo.', 'error');
+      return;
+    }
+    if (!formData.idmat) {
+      showToast('Selecione uma disciplina antes de criar o conteúdo.', 'error');
+      return;
+    }
+    if (!formData.idserie) {
+      showToast('Selecione uma série antes de criar o conteúdo.', 'error');
+      return;
+    }
+    setCreatingTema(true);
+    try {
+      const payload = {
+        nometema: trimmed,
+        idmat: [formData.idmat],
+        idseries: [formData.idserie]
+      };
+      const { data, error } = await supabase
+        .from('tbf_temas')
+        .insert([payload])
+        .select()
+        .single();
+      if (error) throw error;
+      const nextTemas = [...temas, data as Tema].sort((a, b) =>
+        a.nometema.localeCompare(b.nometema, 'pt-BR', { sensitivity: 'base' })
+      );
+      setTemas(nextTemas);
+      setFormData(prev => ({ ...prev, idtema: (data as Tema).id }));
+      setNewTemaName('');
+      showToast('Conteúdo criado com sucesso!', 'success');
+    } catch (error) {
+      console.error('Erro ao criar conteúdo:', error);
+      showToast('Erro ao criar conteúdo.', 'error');
+    } finally {
+      setCreatingTema(false);
+    }
   };
 
   const handleSave = async () => {
@@ -644,8 +723,9 @@ export default function QuestoesDissertativas() {
             }]);
           if (error) throw error;
           successCount++;
-        } catch (err: any) {
-          errors.push(`Linha ${lineIndex}: Erro ao salvar no banco - ${err.message}`);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : 'Erro desconhecido';
+          errors.push(`Linha ${lineIndex}: Erro ao salvar no banco - ${message}`);
         }
       }
 
@@ -1111,6 +1191,22 @@ export default function QuestoesDissertativas() {
                   <option key={mat.id} value={mat.id}>{mat.materia}</option>
                 ))}
               </select>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newMateriaName}
+                  onChange={(e) => setNewMateriaName(e.target.value)}
+                  placeholder="Nova disciplina"
+                  className="flex-1 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-700 focus:ring-2 focus:ring-[#4318FF] outline-none"
+                />
+                <Button
+                  onClick={handleCreateMateria}
+                  className="whitespace-nowrap bg-[#4318FF] hover:bg-[#3311CC]"
+                  isLoading={creatingMateria}
+                >
+                  Adicionar
+                </Button>
+              </div>
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium text-gray-700">Série/Ano *</label>
@@ -1137,6 +1233,24 @@ export default function QuestoesDissertativas() {
                   <option key={tema.id} value={tema.id}>{tema.nometema}</option>
                 ))}
               </select>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newTemaName}
+                  onChange={(e) => setNewTemaName(e.target.value)}
+                  placeholder="Novo conteúdo"
+                  className="flex-1 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-700 focus:ring-2 focus:ring-[#4318FF] outline-none"
+                  disabled={!formData.idmat || !formData.idserie}
+                />
+                <Button
+                  onClick={handleCreateTema}
+                  className="whitespace-nowrap bg-[#4318FF] hover:bg-[#3311CC]"
+                  isLoading={creatingTema}
+                  disabled={!formData.idmat || !formData.idserie}
+                >
+                  Adicionar
+                </Button>
+              </div>
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium text-gray-700">Professor responsável *</label>

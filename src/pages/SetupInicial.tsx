@@ -18,6 +18,24 @@ import { useNavigate } from 'react-router-dom';
 import { LogoutModal } from '../components/layout/LogoutModal';
 import { Sidebar } from '../components/layout/Sidebar';
 
+type RecentUser = {
+  id: string;
+  nome: string | null;
+  sobrenome: string | null;
+  email: string | null;
+  role: string | null;
+  created_at: string;
+};
+
+type KPICardProps = {
+  title: string;
+  value: number | string;
+  icon: React.ComponentType<{ size?: number }>;
+  color: string;
+  bg: string;
+  onClick?: () => void;
+};
+
 export const SetupInicial: React.FC = () => {
   const navigate = useNavigate();
   
@@ -33,8 +51,8 @@ export const SetupInicial: React.FC = () => {
   });
   
   // State for Lists/Charts
-  const [recentUsers, setRecentUsers] = useState<any[]>([]);
-  const [testesByMateria, setTestesByMateria] = useState<{name: string, count: number, percentage: number}[]>([]);
+  const [recentUsers, setRecentUsers] = useState<RecentUser[]>([]);
+  const [testesByMateria, setTestesByMateria] = useState<{ name: string; count: number; percentage: number }[]>([]);
 
   // User info
   const [userName, setUserName] = useState<string>('Admin');
@@ -158,7 +176,7 @@ export const SetupInicial: React.FC = () => {
     }
   };
 
-  const KPICard = ({ title, value, icon: Icon, color, bg, onClick }: any) => (
+  const KPICard = ({ title, value, icon: Icon, color, bg, onClick }: KPICardProps) => (
     <div 
       onClick={onClick}
       className={`bg-white p-6 rounded-2xl shadow-xl shadow-gray-200/40 hover:shadow-gray-200/60 transition-all duration-300 group flex items-center justify-between cursor-pointer transform hover:-translate-y-1`}

@@ -14,6 +14,13 @@ import 'altcha/i18n/pt-br';
 // Tipos para o estado do formulário
 type FormStatus = 'idle' | 'loading' | 'success' | 'error';
 
+type AltchaWidget = HTMLElement & {
+  state?: string;
+  reset?: () => void;
+};
+
+type AltchaStateChangeEvent = CustomEvent<{ state: string }>;
+
 const bounceIn: Variants = {
   hidden: { opacity: 0, scale: 0.3 },
   visible: {
@@ -75,9 +82,10 @@ export const Contato: React.FC = () => {
       ></altcha-widget>`;
     }
 
-    const widget = container.querySelector('altcha-widget');
+    const widget = container.querySelector('altcha-widget') as AltchaWidget | null;
     
-    const handleStateChange = (ev: any) => {
+    const handleStateChange: EventListener = (event) => {
+      const ev = event as AltchaStateChangeEvent;
       console.log('ALTCHA state changed:', ev.detail.state);
       setIsCaptchaVerified(ev.detail.state === 'verified');
     };
@@ -85,7 +93,7 @@ export const Contato: React.FC = () => {
     if (widget) {
       widget.addEventListener('statechange', handleStateChange);
       // Verificar estado inicial caso já esteja verificado
-      if ((widget as any).state === 'verified') {
+      if (widget.state === 'verified') {
         setIsCaptchaVerified(true);
       }
     }
@@ -207,7 +215,7 @@ export const Contato: React.FC = () => {
     setIsCaptchaVerified(false);
     // Resetar o widget ALTCHA
     if (altchaContainerRef.current) {
-      const widget = altchaContainerRef.current.querySelector('altcha-widget') as any;
+      const widget = altchaContainerRef.current.querySelector('altcha-widget') as AltchaWidget | null;
       if (widget && typeof widget.reset === 'function') {
         widget.reset();
       }

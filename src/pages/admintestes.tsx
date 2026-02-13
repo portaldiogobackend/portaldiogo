@@ -50,6 +50,15 @@ interface Teste {
   created_at: string;
 }
 
+type SelectItem = {
+  id: string;
+  materia?: string;
+  serie?: string;
+  nometema?: string;
+  nome?: string;
+  sobrenome?: string;
+};
+
 // Order for series display
 const SERIES_ORDER = [
   'Quinto Ano Fundamental',
@@ -613,9 +622,10 @@ export default function AdminTestes() {
 
           if (error) throw error;
           successCount++;
-        } catch (err: any) {
+        } catch (err) {
           console.error(`Error importing line ${i + 1}:`, err);
-          errors.push(`Linha ${i + 1}: Erro ao salvar no banco - ${err.message}`);
+          const message = err instanceof Error ? err.message : 'Erro desconhecido';
+          errors.push(`Linha ${i + 1}: Erro ao salvar no banco - ${message}`);
         }
       }
 
@@ -697,7 +707,7 @@ export default function AdminTestes() {
     }
   };
 
-  const handleToggleAll = (items: any[], field: 'idmat' | 'idseries' | 'idtema' | 'idalunos') => {
+  const handleToggleAll = (items: SelectItem[], field: 'idmat' | 'idseries' | 'idtema' | 'idalunos') => {
     setFormData(prev => {
       const itemIds = items.map(i => i.id);
       const current = prev[field];
@@ -721,7 +731,7 @@ export default function AdminTestes() {
     });
   };
 
-  const handleMassiveToggleAll = (items: any[], field: 'idmat' | 'idseries' | 'idtema' | 'idalunos') => {
+  const handleMassiveToggleAll = (items: SelectItem[], field: 'idmat' | 'idseries' | 'idtema' | 'idalunos') => {
     setMassiveFormData(prev => {
       const itemIds = items.map(i => i.id);
       const current = prev[field];
@@ -922,14 +932,14 @@ export default function AdminTestes() {
     renderLabel
   }: { 
     label: string, 
-    items: any[], 
+    items: SelectItem[], 
     selectedIds: string[], 
     onToggle: (id: string) => void,
-    onToggleAll: (items: any[]) => void,
-    displayProp?: string,
+    onToggleAll: (items: SelectItem[]) => void,
+    displayProp?: keyof SelectItem,
     maxHeight?: string,
     subtitle?: React.ReactNode,
-    renderLabel?: (item: any) => React.ReactNode
+    renderLabel?: (item: SelectItem) => React.ReactNode
   }) => {
     const allSelected = items.length > 0 && items.every(item => selectedIds.includes(item.id));
     
@@ -1315,7 +1325,7 @@ export default function AdminTestes() {
                 
                 return (
                   <span className="flex items-center gap-2">
-                    <span className="font-medium">{capitalizeWords(aluno.nome)} {capitalizeWords(aluno.sobrenome)}</span>
+                    <span className="font-medium">{capitalizeWords(aluno.nome || '')} {capitalizeWords(aluno.sobrenome || '')}</span>
                     {alunoSerie && (
                       <span className="text-xs text-gray-500">- {alunoSerie}</span>
                     )}
@@ -1627,7 +1637,7 @@ export default function AdminTestes() {
               
               return (
                 <span className="flex items-center gap-2">
-                  <span className="font-medium">{capitalizeWords(aluno.nome)} {capitalizeWords(aluno.sobrenome)}</span>
+                  <span className="font-medium">{capitalizeWords(aluno.nome || '')} {capitalizeWords(aluno.sobrenome || '')}</span>
                   {alunoSerie && (
                     <span className="text-xs text-gray-500">- {alunoSerie}</span>
                   )}
