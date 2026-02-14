@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { StudentSidebar } from '../components/layout/StudentSidebar';
@@ -66,13 +66,9 @@ export const CentralDuvidas: React.FC = () => {
   // Notification State
   const [toast, setToast] = useState<{ message: string; type: ToastType } | null>(null);
 
-  const showToast = (message: string, type: ToastType) => {
+  const showToast = useCallback((message: string, type: ToastType) => {
     setToast({ message, type });
     console.log(`[${type.toUpperCase()}] ${message}`);
-  };
-
-  useEffect(() => {
-    checkUserAndFetchData();
   }, []);
 
   // Debug: Monitor state changes for problematic values
@@ -85,7 +81,29 @@ export const CentralDuvidas: React.FC = () => {
     }
   }, [userId, selectedMateria]);
 
-  const checkUserAndFetchData = async () => {
+  const fetchDuvidas = useCallback(async (uid: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('tbf_duvidas')
+        .select('*')
+        .eq('idaluno', uid)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      const enrichedDuvidas = ((data || []) as Duvida[]).map(d => ({
+        ...d,
+        materiaName: 'Carregando...',
+        respondido: !!d.resposta && d.resposta.trim() !== ''
+      }));
+
+      setDuvidas(enrichedDuvidas);
+    } catch (error) {
+      console.error('Error fetching duvidas:', error);
+    }
+  }, []);
+
+  const checkUserAndFetchData = useCallback(async () => {
     try {
       setLoading(true);
       const { data: { user } } = await supabase.auth.getUser();
@@ -140,29 +158,11 @@ export const CentralDuvidas: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [fetchDuvidas, navigate, showToast]);
 
-  const fetchDuvidas = async (uid: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('tbf_duvidas')
-        .select('*')
-        .eq('idaluno', uid)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-
-      const enrichedDuvidas = ((data || []) as Duvida[]).map(d => ({
-        ...d,
-        materiaName: 'Carregando...',
-        respondido: !!d.resposta && d.resposta.trim() !== ''
-      }));
-
-      setDuvidas(enrichedDuvidas);
-    } catch (error) {
-      console.error('Error fetching duvidas:', error);
-    }
-  };
+  useEffect(() => {
+    checkUserAndFetchData();
+  }, [checkUserAndFetchData]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

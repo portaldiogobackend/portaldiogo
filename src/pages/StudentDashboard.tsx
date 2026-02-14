@@ -10,7 +10,7 @@ import {
   XCircle,
   AlertCircle
 } from 'lucide-react';
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LogoutModal } from '../components/layout/LogoutModal';
 import { StudentSidebar } from '../components/layout/StudentSidebar';
@@ -22,12 +22,27 @@ interface Materia {
   imagem?: string;
 }
 
+interface Teste {
+  id: string;
+  pergunta: string;
+  idmat: string[];
+  idtema: string[];
+  created_at: string;
+}
+
+interface Prova {
+  idteste: string;
+  acerto: boolean;
+}
+
 export const StudentDashboard: React.FC = () => {
   const navigate = useNavigate();
   const [userName, setUserName] = useState<string>('Aluno');
   const [userInitials, setUserInitials] = useState<string>('AL');
   const [userMaterias, setUserMaterias] = useState<Materia[]>([]);
   const [materiasCount, setMateriasCount] = useState<number>(0);
+  const [recentTestes, setRecentTestes] = useState<Teste[]>([]);
+  const [provas, setProvas] = useState<Prova[]>([]);
   const [testStats, setTestStats] = useState({
     pending: 0,
     completed: 0,
@@ -39,12 +54,17 @@ export const StudentDashboard: React.FC = () => {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const completedTestIds = useMemo(() => new Set(provas.map(prova => prova.idteste)), [provas]);
 
-  useEffect(() => {
-    fetchDashboardData();
-  }, []);
+  const stripHtml = (html: string) => {
+    if (!html) return '';
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    return doc.body.textContent || '';
+  };
 
-  const fetchDashboardData = async () => {
+  const materiaLabel = (id: string) => userMaterias.find(m => m.id === id)?.materia || '—';
+
+  const fetchDashboardData = useCallback(async () => {
     try {
       setLoading(true);
       
@@ -105,8 +125,9 @@ export const StudentDashboard: React.FC = () => {
       
       const { data: testesData, error: testesError } = await supabase
         .from('tbf_testes')
-        .select('id')
-        .contains('idalunos', [user.id]);
+        .select('id, pergunta, idmat, idtema, created_at')
+        .contains('idalunos', [user.id])
+        .order('created_at', { ascending: false });
 
       if (testesError) {
         console.error('Erro ao buscar testes:', testesError);
@@ -116,7 +137,7 @@ export const StudentDashboard: React.FC = () => {
 
       const { data: provasData, error: provasError } = await supabase
         .from('tbf_prova')
-        .select('acerto')
+        .select('idteste, acerto')
         .eq('idaluno', user.id);
 
       if (provasError) {
@@ -142,12 +163,19 @@ export const StudentDashboard: React.FC = () => {
         successRate
       });
 
+      setRecentTestes(((testesData as Teste[]) || []).slice(0, 5));
+      setProvas((provasData as Prova[]) || []);
+
     } catch (error) {
       console.error('Erro ao buscar dados do dashboard:', error);
     } finally {
       setLoading(false);
     }
-  };
+  }, [navigate]);
+
+  useEffect(() => {
+    fetchDashboardData();
+  }, [fetchDashboardData]);
 
   const handleLogout = async () => {
     try {
@@ -402,6 +430,58 @@ export const StudentDashboard: React.FC = () => {
                   <span className="text-[#A3AED0]">desempenho</span>
                 </div>
               </div>
+            </div>
+
+            <div className="bg-white p-6 md:p-8 rounded-2xl shadow-2xl shadow-gray-200/40 mb-8 md:mb-10">
+              <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+                <div>
+                  <h2 className="text-xl md:text-2xl font-bold text-[#1B2559]">Listas de Exercícios</h2>
+                  <p className="text-[#A3AED0] text-sm mt-1">Últimas listas recebidas</p>
+                </div>
+                <button
+                  onClick={() => navigate('/aluno/testes')}
+                  className="px-4 py-2 rounded-lg border border-[#4318FF] text-[#4318FF] text-sm font-bold hover:bg-[#F4F7FE] transition-colors"
+                >
+                  Ver todas
+                </button>
+              </div>
+
+              {loading ? (
+                <div className="py-8 flex justify-center">
+                  <div className="h-6 w-24 bg-gray-100 rounded animate-pulse"></div>
+                </div>
+              ) : recentTestes.length === 0 ? (
+                <div className="text-center py-10 text-gray-400">
+                  Nenhuma lista recebida ainda.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {recentTestes.map(teste => {
+                    const resumo = stripHtml(teste.pergunta);
+                    const materias = teste.idmat?.length ? teste.idmat.map(materiaLabel).join(', ') : '—';
+                    const status = completedTestIds.has(teste.id) ? 'Concluído' : 'Pendente';
+                    return (
+                      <button
+                        key={teste.id}
+                        onClick={() => navigate('/aluno/testes')}
+                        className="w-full text-left rounded-2xl border border-gray-100 p-4 hover:border-[#4318FF] hover:bg-[#F4F7FE] transition-colors"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-medium text-gray-700">
+                              {resumo ? `${resumo.slice(0, 140)}${resumo.length > 140 ? '...' : ''}` : 'Lista sem descrição'}
+                            </p>
+                            <p className="text-xs text-gray-500 mt-1">{materias}</p>
+                          </div>
+                          <span className={`text-xs font-bold ${status === 'Concluído' ? 'text-green-600' : 'text-orange-500'}`}>
+                            {status}
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             {/* Matérias Section */}

@@ -8,7 +8,7 @@ import { capitalizeWords } from '@/lib/utils';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { CheckCircle, ChevronLeft, Clock, Menu, Send, Shield } from 'lucide-react';
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LogoutModal } from '../components/layout/LogoutModal';
 import { Sidebar } from '../components/layout/Sidebar';
@@ -48,11 +48,11 @@ export const CentralDuvidasAdmin: React.FC = () => {
   const [userName, setUserName] = useState<string>('Admin');
   const [userRole, setUserRole] = useState<string | null>(null);
 
-  const showToast = (message: string, type: ToastType) => {
+  const showToast = useCallback((message: string, type: ToastType) => {
     setToast({ message, type });
-  };
+  }, []);
 
-  const fetchUserData = async () => {
+  const fetchUserData = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
@@ -71,9 +71,9 @@ export const CentralDuvidasAdmin: React.FC = () => {
     } catch (error) {
       console.error('Error fetching user data:', error);
     }
-  };
+  }, []);
 
-  const fetchDuvidas = async () => {
+  const fetchDuvidas = useCallback(async () => {
     setLoading(true);
     try {
       // Fetch doubts
@@ -114,12 +114,12 @@ export const CentralDuvidasAdmin: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [showToast]);
 
   useEffect(() => {
     fetchUserData();
     fetchDuvidas();
-  }, []);
+  }, [fetchDuvidas, fetchUserData]);
 
   const handleLogout = async () => {
     try {

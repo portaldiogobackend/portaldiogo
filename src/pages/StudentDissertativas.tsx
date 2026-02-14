@@ -6,7 +6,7 @@ import { capitalizeWords } from '@/lib/utils';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { ChevronLeft, Image as ImageIcon, Menu, Send, Upload } from 'lucide-react';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
 import { useNavigate } from 'react-router-dom';
@@ -79,6 +79,12 @@ const renderLatex = (html: string) => {
   return output;
 };
 
+const stripHtml = (html: string) => {
+  if (!html) return '';
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  return doc.body.textContent || '';
+};
+
 const MathContent = ({ html }: { html: string }) => {
   const rendered = useMemo(() => renderLatex(html), [html]);
   return <div className="prose max-w-none text-gray-700" dangerouslySetInnerHTML={{ __html: rendered }} />;
@@ -107,11 +113,11 @@ export const StudentDissertativas: React.FC = () => {
   const [respostasImagemUrl, setRespostasImagemUrl] = useState<Record<string, string>>({});
   const [sendingId, setSendingId] = useState<string | null>(null);
 
-  const showToast = (message: string, type: ToastType) => {
+  const showToast = useCallback((message: string, type: ToastType) => {
     setToast({ message, type });
-  };
+  }, []);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -181,16 +187,44 @@ export const StudentDissertativas: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [navigate, showToast]);
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [fetchData]);
+
+  useEffect(() => {
+    if (!currentUserId) return;
+    const stored = localStorage.getItem(`dissertativas-draft-${currentUserId}`);
+    if (!stored) return;
+    try {
+      const parsed = JSON.parse(stored) as { texto?: Record<string, string>; imagemUrl?: Record<string, string> };
+      setRespostasTexto(parsed.texto || {});
+      setRespostasImagemUrl(parsed.imagemUrl || {});
+    } catch (error) {
+      console.error('Erro ao carregar rascunho:', error);
+    }
+  }, [currentUserId]);
+
+  useEffect(() => {
+    if (!currentUserId) return;
+    const payload = {
+      texto: respostasTexto,
+      imagemUrl: respostasImagemUrl
+    };
+    localStorage.setItem(`dissertativas-draft-${currentUserId}`, JSON.stringify(payload));
+  }, [currentUserId, respostasTexto, respostasImagemUrl]);
 
   const envioByQuestao = (id: string) => envios.find(envio => envio.questao_id === id);
   const materiaName = (id: string) => materias.find(m => m.id === id)?.materia || '—';
   const serieName = (id: string) => series.find(s => s.id === id)?.serie || '—';
   const temaName = (id?: string | null) => temas.find(t => t.id === id)?.nometema || '—';
+  const goToQuestao = (id: string) => {
+    const element = document.getElementById(`questao-${id}`);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
 
   const handleFileChange = (questaoId: string, file: File | null) => {
     setRespostasImagem(prev => ({ ...prev, [questaoId]: file }));
@@ -333,6 +367,42 @@ export const StudentDissertativas: React.FC = () => {
               </p>
             </div>
 
+            {!loading && questoes.length > 0 && (
+              <div className="bg-white rounded-3xl shadow-xl shadow-gray-200/40 overflow-hidden border-none p-8">
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-xl font-bold text-[#1B2559]">Lista de Questões</h3>
+                  <span className="text-sm font-medium text-gray-500">{questoes.length} questão(ões)</span>
+                </div>
+                <div className="space-y-3">
+                  {questoes.map(questao => {
+                    const envio = envioByQuestao(questao.id);
+                    const resumo = stripHtml(questao.enunciado);
+                    return (
+                      <button
+                        key={questao.id}
+                        onClick={() => goToQuestao(questao.id)}
+                        className="w-full text-left rounded-2xl border border-gray-100 p-4 hover:border-[#4318FF] hover:bg-[#F4F7FE] transition-colors"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-medium text-gray-700">
+                              {resumo ? `${resumo.slice(0, 120)}${resumo.length > 120 ? '...' : ''}` : 'Questão sem enunciado'}
+                            </p>
+                            <p className="text-xs text-gray-500 mt-1">
+                              {materiaName(questao.idmat)} • {serieName(questao.idserie)} • {temaName(questao.idtema)}
+                            </p>
+                          </div>
+                          <span className={`text-xs font-bold ${envio ? 'text-green-600' : 'text-orange-500'}`}>
+                            {envio ? 'Enviado' : 'Pendente'}
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             <div className="space-y-6">
               {loading ? (
                 <div className="py-10 flex justify-center">
@@ -346,7 +416,7 @@ export const StudentDissertativas: React.FC = () => {
                 questoes.map(questao => {
                   const envio = envioByQuestao(questao.id);
                   return (
-                    <div key={questao.id} className="bg-white rounded-3xl shadow-xl shadow-gray-200/40 overflow-hidden border-none p-8 space-y-6">
+                    <div id={`questao-${questao.id}`} key={questao.id} className="bg-white rounded-3xl shadow-xl shadow-gray-200/40 overflow-hidden border-none p-8 space-y-6">
                       <div className="flex flex-wrap items-center justify-between gap-4">
                         <div>
                           <p className="text-sm text-gray-500">Disciplina: <span className="font-medium text-gray-700">{materiaName(questao.idmat)}</span></p>

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Clock, CheckCircle2, Mail, LogOut, RefreshCw, Home } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -10,18 +10,7 @@ export const WaitingApproval: React.FC = () => {
   const [userEmail, setUserEmail] = useState<string>('');
   const [isChecking, setIsChecking] = useState(false);
 
-  useEffect(() => {
-    fetchUserData();
-    
-    // Verificar periodicamente se o status mudou
-    const interval = setInterval(() => {
-      checkApprovalStatus();
-    }, 30000); // Verifica a cada 30 segundos
-
-    return () => clearInterval(interval);
-  }, []);
-
-  const fetchUserData = async () => {
+  const fetchUserData = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
@@ -54,9 +43,9 @@ export const WaitingApproval: React.FC = () => {
     } catch (error) {
       console.error('Erro ao buscar dados do usuário:', error);
     }
-  };
+  }, [navigate]);
 
-  const checkApprovalStatus = async () => {
+  const checkApprovalStatus = useCallback(async () => {
     setIsChecking(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -78,7 +67,18 @@ export const WaitingApproval: React.FC = () => {
     } finally {
       setIsChecking(false);
     }
-  };
+  }, [navigate]);
+
+  useEffect(() => {
+    fetchUserData();
+    
+    // Verificar periodicamente se o status mudou
+    const interval = setInterval(() => {
+      checkApprovalStatus();
+    }, 30000); // Verifica a cada 30 segundos
+
+    return () => clearInterval(interval);
+  }, [checkApprovalStatus, fetchUserData]);
 
   const handleLogout = async () => {
     try {

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import DOMPurify from 'dompurify';
 import he from 'he';
@@ -44,6 +44,14 @@ interface Tema {
   nometema: string;
 }
 
+type AttemptInfo = {
+  count: number;
+  hasCorrect: boolean;
+  last: TesteRealizado | null;
+};
+
+const MAX_ATTEMPTS = 3;
+
 export const TesteAlunos: React.FC = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
@@ -69,17 +77,32 @@ export const TesteAlunos: React.FC = () => {
   const [filterTema, setFilterTema] = useState<string>('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
 
+  const attemptsByTest = useMemo(() => {
+    const map = new Map<string, AttemptInfo>();
+    for (const attempt of testesRealizados) {
+      const existing = map.get(attempt.idteste);
+      if (existing) {
+        existing.count += 1;
+        existing.hasCorrect = existing.hasCorrect || attempt.acerto;
+        existing.last = attempt;
+      } else {
+        map.set(attempt.idteste, { count: 1, hasCorrect: attempt.acerto, last: attempt });
+      }
+    }
+    return map;
+  }, [testesRealizados]);
+
+  const getAttemptInfo = (testeId: string): AttemptInfo => {
+    return attemptsByTest.get(testeId) || { count: 0, hasCorrect: false, last: null };
+  };
+
   const decodeAndSanitize = (html: string) => {
     if (!html) return '';
     const decoded = he.decode(html);
     return DOMPurify.sanitize(decoded);
   };
 
-  useEffect(() => {
-    fetchData();
-  }, []);
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -135,7 +158,11 @@ export const TesteAlunos: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [navigate]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -150,7 +177,16 @@ export const TesteAlunos: React.FC = () => {
 
   const handleSubmitAnswer = async () => {
     if (!selectedTeste || selectedOption === null) return;
-    
+    const attemptInfo = getAttemptInfo(selectedTeste.id);
+    if (attemptInfo.hasCorrect) {
+      setToast({ message: 'Você já acertou esta questão.', type: 'error' });
+      return;
+    }
+    if (attemptInfo.count >= MAX_ATTEMPTS) {
+      setToast({ message: 'Tentativas esgotadas para esta questão.', type: 'error' });
+      return;
+    }
+
     setSubmitting(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -198,10 +234,17 @@ export const TesteAlunos: React.FC = () => {
   };
 
   const getStatus = (testeId: string) => {
-    const prova = testesRealizados.find(p => p.idteste === testeId);
-    if (!prova) return 'pending';
-    return prova.acerto ? 'correct' : 'incorrect';
+    const attemptInfo = getAttemptInfo(testeId);
+    if (attemptInfo.hasCorrect) return 'correct';
+    if (attemptInfo.count === 0) return 'pending';
+    if (attemptInfo.count >= MAX_ATTEMPTS) return 'incorrect';
+    return 'pending';
   };
+
+  const selectedAttemptInfo = selectedTeste ? getAttemptInfo(selectedTeste.id) : null;
+  const isAttemptBlocked = selectedAttemptInfo
+    ? selectedAttemptInfo.hasCorrect || selectedAttemptInfo.count >= MAX_ATTEMPTS
+    : false;
 
   const filteredTestes = testes.filter(teste => {
     // Filter by Materia
@@ -227,7 +270,8 @@ export const TesteAlunos: React.FC = () => {
     });
   });
 
-  const getCardFooter = (teste: Teste, isDone: boolean) => {
+  const getCardFooter = (teste: Teste, attemptInfo: AttemptInfo) => {
+    const isDone = attemptInfo.hasCorrect || attemptInfo.count >= MAX_ATTEMPTS;
     if (!isDone) {
       return (
         <button
@@ -243,23 +287,19 @@ export const TesteAlunos: React.FC = () => {
     
     return (
       <div className="flex flex-col items-end gap-2">
-         <span className="text-xs font-bold text-green-600 bg-green-50 px-2 py-1 rounded-lg border border-green-100">
-           Resp: {correctAnswer}
-         </span>
-         <button
-           onClick={() => {
-             setSelectedTeste(teste);
-             // Se acertou, a opção selecionada é a resposta correta.
-             // Se errou, precisamos saber qual foi a errada. Mas como não salvamos a opção errada no banco (apenas boolean acerto),
-             // vamos mostrar apenas a correta no modal para simplificar ou assumir um estado de erro genérico.
-             // Melhor: Se errou, mostraremos apenas a correta destacada e uma mensagem.
-             setSelectedOption(testesRealizados.find(t => t.idteste === teste.id)?.acerto ? teste.resposta : -1); 
-             setShowResult(true);
-           }}
-           className="px-4 py-2 bg-gray-100 text-gray-600 text-sm font-bold rounded-lg hover:bg-gray-200 transition-colors"
-         >
-           Ver Detalhes
-         </button>
+        <span className="text-xs font-bold text-green-600 bg-green-50 px-2 py-1 rounded-lg border border-green-100">
+          Resp: {correctAnswer}
+        </span>
+        <button
+          onClick={() => {
+            setSelectedTeste(teste);
+            setSelectedOption(attemptInfo.hasCorrect ? teste.resposta : -1); 
+            setShowResult(true);
+          }}
+          className="px-4 py-2 bg-gray-100 text-gray-600 text-sm font-bold rounded-lg hover:bg-gray-200 transition-colors"
+        >
+          Ver Detalhes
+        </button>
       </div>
     );
   };
@@ -388,6 +428,11 @@ export const TesteAlunos: React.FC = () => {
                     </span>
                   )}
                 </div>
+                {selectedAttemptInfo && (
+                  <div className="text-xs text-gray-500 mb-6">
+                    Tentativas: <span className="font-semibold">{selectedAttemptInfo.count}</span> / {MAX_ATTEMPTS}
+                  </div>
+                )}
 
                 <div 
                   className="text-lg md:text-xl font-bold text-[#1B2559] mb-8 leading-relaxed break-words [&_img]:max-w-full [&_p]:break-words"
@@ -455,7 +500,7 @@ export const TesteAlunos: React.FC = () => {
                 {!showResult ? (
                   <button
                     onClick={handleSubmitAnswer}
-                    disabled={selectedOption === null || submitting}
+                    disabled={selectedOption === null || submitting || isAttemptBlocked}
                     className="w-full md:w-auto px-8 py-4 bg-[#4318FF] text-white font-bold rounded-xl shadow-lg shadow-[#4318FF]/20 hover:bg-[#3311CC] disabled:opacity-50 disabled:cursor-not-allowed transition-all transform active:scale-95"
                   >
                     {submitting ? 'Enviando...' : 'Confirmar Resposta'}
@@ -486,8 +531,9 @@ export const TesteAlunos: React.FC = () => {
                   </div>
                 ) : (
                   filteredTestes.map(teste => {
+                    const attemptInfo = getAttemptInfo(teste.id);
                     const status = getStatus(teste.id);
-                    const isDone = status !== 'pending';
+                    const isDone = attemptInfo.hasCorrect || attemptInfo.count >= MAX_ATTEMPTS;
 
                     return (
                       <div 
@@ -510,10 +556,13 @@ export const TesteAlunos: React.FC = () => {
                                 {status === 'correct' ? (
                                   <> <CheckCircle size={10} /> Acertou </>
                                 ) : (
-                                  <> <XCircle size={10} /> Errou </>
+                                  <> <XCircle size={10} /> Tentativas esgotadas </>
                                 )}
                               </span>
                             )}
+                            <span className="bg-gray-50 text-gray-500 px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide whitespace-nowrap">
+                              Tentativas {attemptInfo.count}/{MAX_ATTEMPTS}
+                            </span>
                             <div className="flex items-center gap-1 text-xs text-gray-400 font-medium ml-auto md:ml-0">
                               <Clock size={12} />
                               {new Date(teste.created_at).toLocaleDateString()}
@@ -527,7 +576,7 @@ export const TesteAlunos: React.FC = () => {
                         </div>
 
                         <div className="flex-shrink-0 pt-2 md:pt-0 border-t md:border-t-0 border-gray-50 md:pl-4 md:border-l md:border-gray-100 flex justify-end">
-                          {getCardFooter(teste, isDone)}
+                          {getCardFooter(teste, attemptInfo)}
                         </div>
                       </div>
                     );

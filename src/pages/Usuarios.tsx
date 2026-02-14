@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import { Users, ChevronLeft, Edit, Trash2, Plus, Mail, Shield, Signature, Search, ChevronUp, ChevronDown, Filter, X, Menu } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Sidebar } from '../components/layout/Sidebar';
@@ -95,15 +95,7 @@ const Usuarios: React.FC = () => {
     sessionStorage.setItem('user_sort_config', JSON.stringify(sortConfig));
   }, [sortConfig]);
 
-  useEffect(() => {
-    fetchUserData();
-    fetchAllUsers();
-    fetchMaterias();
-    fetchSeries();
-    logAudit('access_users_list', null, { page: 'Usuarios' });
-  }, []);
-
-  const logAudit = async (action: string, targetId: string | null, details: Record<string, unknown> = {}) => {
+  const logAudit = useCallback(async (action: string, targetId: string | null, details: Record<string, unknown> = {}) => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
@@ -117,9 +109,9 @@ const Usuarios: React.FC = () => {
     } catch (error) {
       console.error('Audit log error:', error);
     }
-  };
+  }, []);
 
-  const fetchUserData = async () => {
+  const fetchUserData = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
@@ -137,9 +129,9 @@ const Usuarios: React.FC = () => {
     } catch (error) {
       console.error('Error fetching user data:', error);
     }
-  };
+  }, []);
 
-  const fetchMaterias = async () => {
+  const fetchMaterias = useCallback(async () => {
     try {
       const { data, error } = await supabase
         .from('tbf_materias')
@@ -151,9 +143,9 @@ const Usuarios: React.FC = () => {
     } catch (error) {
       console.error('Error fetching materias:', error);
     }
-  };
+  }, []);
 
-  const fetchSeries = async () => {
+  const fetchSeries = useCallback(async () => {
     try {
       const { data, error } = await supabase
         .from('tbf_serie')
@@ -165,9 +157,9 @@ const Usuarios: React.FC = () => {
     } catch (error) {
       console.error('Error fetching series:', error);
     }
-  };
+  }, []);
 
-  const fetchAllUsers = async () => {
+  const fetchAllUsers = useCallback(async () => {
     try {
       setLoading(true);
       const { data, error } = await supabase
@@ -182,7 +174,15 @@ const Usuarios: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchUserData();
+    fetchAllUsers();
+    fetchMaterias();
+    fetchSeries();
+    logAudit('access_users_list', null, { page: 'Usuarios' });
+  }, [fetchAllUsers, fetchMaterias, fetchSeries, fetchUserData, logAudit]);
 
   const handleDeleteClick = (user: UserProfile) => {
     setUserToDelete(user);

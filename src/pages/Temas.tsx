@@ -8,7 +8,7 @@ import { Toast } from '@/components/ui/Toast';
 import { supabase } from '@/lib/supabase';
 import { capitalizeWords } from '@/lib/utils';
 import { ArrowUpDown, Edit2, Filter, Menu, Plus, Search, Trash2, X } from 'lucide-react';
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Sidebar } from '../components/layout/Sidebar';
 
 interface Tema {
@@ -28,6 +28,18 @@ interface Serie {
   id: string;
   serie: string;
 }
+
+const SERIES_ORDER = [
+  'Quinto Ano Fundamental',
+  'Sexto Ano Fundamental',
+  'Sétimo Ano Fundamental',
+  'Oitavo Ano Fundamental',
+  'Nono Ano Fundamental',
+  'Primeiro Ano Ensino Médio',
+  'Segundo Ano Ensino Médio',
+  'Terceiro Ano Ensino Médio',
+  'Outros'
+];
 
 const MultiSelect = <T extends { id: string }>({ 
   label, 
@@ -100,11 +112,11 @@ export const Temas: React.FC = () => {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [userName, setUserName] = useState<string>('Admin');
 
-  const showToast = (message: string, type: ToastType) => {
+  const showToast = useCallback((message: string, type: ToastType) => {
     setToast({ message, type });
-  };
+  }, []);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true);
     try {
       // Fetch Temas
@@ -164,11 +176,11 @@ export const Temas: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [showToast]);
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [fetchData]);
 
   const handleOpenModal = (tema?: Tema) => {
     if (tema) {
@@ -321,18 +333,6 @@ export const Temas: React.FC = () => {
       .map(value => String(value))
       .join(', ');
   };
-
-  const SERIES_ORDER = [
-  'Quinto Ano Fundamental',
-  'Sexto Ano Fundamental',
-  'Sétimo Ano Fundamental',
-  'Oitavo Ano Fundamental',
-  'Nono Ano Fundamental',
-  'Primeiro Ano Ensino Médio',
-  'Segundo Ano Ensino Médio',
-  'Terceiro Ano Ensino Médio',
-  'Outros'
-];
 
   return (
     <div className="flex h-screen bg-[#F4F7FE] font-sans text-[#2B3674]">

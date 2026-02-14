@@ -46,6 +46,7 @@ interface Aluno {
   id: string;
   nome: string;
   sobrenome?: string | null;
+  idserie?: string | null;
 }
 
 interface QuestaoDissertativa {
@@ -204,6 +205,11 @@ export default function QuestoesDissertativas() {
   const [currentEnvio, setCurrentEnvio] = useState<EnvioDissertativa | null>(null);
   const [currentAssignQuestao, setCurrentAssignQuestao] = useState<QuestaoDissertativa | null>(null);
   const [assignAlunoId, setAssignAlunoId] = useState('');
+  const [selectedQuestaoIds, setSelectedQuestaoIds] = useState<string[]>([]);
+  const [isMassAssignModalOpen, setIsMassAssignModalOpen] = useState(false);
+  const [massAssignAlunoId, setMassAssignAlunoId] = useState('');
+  const [massAssignSerieId, setMassAssignSerieId] = useState('');
+  const [massAssigning, setMassAssigning] = useState(false);
   const enunciadoRef = useRef<ReactQuill | null>(null);
   const respostaRef = useRef<ReactQuill | null>(null);
   const [formData, setFormData] = useState({
@@ -226,11 +232,11 @@ export default function QuestoesDissertativas() {
 
   const isStaff = userRole === 'admin' || userRole === 'professor';
 
-  const showToast = (message: string, type: ToastType) => {
+  const showToast = useCallback((message: string, type: ToastType) => {
     setToast({ message, type });
-  };
+  }, []);
 
-  const fetchInitialData = async () => {
+  const fetchInitialData = useCallback(async () => {
     setLoading(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -272,7 +278,7 @@ export default function QuestoesDissertativas() {
 
       const { data: alunosData } = await supabase
         .from('tbf_controle_user')
-        .select('id, nome, sobrenome')
+        .select('id, nome, sobrenome, idserie')
         .eq('role', 'aluno')
         .order('nome');
       setAlunos((alunosData as Aluno[]) || []);
@@ -294,11 +300,11 @@ export default function QuestoesDissertativas() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [navigate, showToast]);
 
   useEffect(() => {
     fetchInitialData();
-  }, []);
+  }, [fetchInitialData]);
 
   const filteredQuestoes = useMemo(() => {
     const term = searchTerm.toLowerCase();
@@ -310,6 +316,13 @@ export default function QuestoesDissertativas() {
       return matchesSearch && matchesMateria && matchesSerie && matchesTema;
     });
   }, [questoes, searchTerm, filterMateria, filterSerie, filterTema]);
+
+  const visibleQuestaoIds = useMemo(() => filteredQuestoes.map(questao => questao.id), [filteredQuestoes]);
+  const allVisibleSelected = visibleQuestaoIds.length > 0 && visibleQuestaoIds.every(id => selectedQuestaoIds.includes(id));
+  const massAssignAlunos = useMemo(() => {
+    if (!massAssignSerieId) return alunos;
+    return alunos.filter(aluno => aluno.idserie === massAssignSerieId);
+  }, [alunos, massAssignSerieId]);
 
   const clearFilters = () => {
     setSearchTerm('');
@@ -372,6 +385,36 @@ export default function QuestoesDissertativas() {
     setIsAssignModalOpen(false);
     setCurrentAssignQuestao(null);
     setAssignAlunoId('');
+  };
+
+  const openMassAssign = () => {
+    if (selectedQuestaoIds.length === 0) {
+      showToast('Selecione pelo menos uma questão.', 'error');
+      return;
+    }
+    setIsMassAssignModalOpen(true);
+  };
+
+  const closeMassAssign = () => {
+    setIsMassAssignModalOpen(false);
+    setMassAssignAlunoId('');
+    setMassAssignSerieId('');
+  };
+
+  const toggleQuestaoSelection = (id: string) => {
+    setSelectedQuestaoIds(prev => prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]);
+  };
+
+  const toggleAllVisible = () => {
+    if (allVisibleSelected) {
+      setSelectedQuestaoIds(prev => prev.filter(id => !visibleQuestaoIds.includes(id)));
+      return;
+    }
+    setSelectedQuestaoIds(prev => {
+      const next = new Set(prev);
+      visibleQuestaoIds.forEach(id => next.add(id));
+      return Array.from(next);
+    });
   };
 
   const openCorrection = (envio: EnvioDissertativa) => {
@@ -584,6 +627,75 @@ export default function QuestoesDissertativas() {
       showToast('Erro ao enviar questão.', 'error');
     } finally {
       setAssigning(false);
+    }
+  };
+
+  const handleMassAssign = async () => {
+    if (selectedQuestaoIds.length === 0) {
+      showToast('Selecione pelo menos uma questão.', 'error');
+      return;
+    }
+    if (!currentUserId) {
+      showToast('Usuário não identificado.', 'error');
+      return;
+    }
+
+    const targetAlunoIds = massAssignAlunoId
+      ? [massAssignAlunoId]
+      : massAssignSerieId
+        ? alunos.filter(aluno => aluno.idserie === massAssignSerieId).map(aluno => aluno.id)
+        : [];
+
+    if (targetAlunoIds.length === 0) {
+      showToast('Selecione um aluno ou uma série com alunos.', 'error');
+      return;
+    }
+
+    setMassAssigning(true);
+    try {
+      const { data: existing } = await supabase
+        .from('tbf_questoes_dissertativas_destinos')
+        .select('questao_id, aluno_id')
+        .in('questao_id', selectedQuestaoIds)
+        .in('aluno_id', targetAlunoIds);
+
+      const existingPairs = new Set((existing || []).map(item => `${item.questao_id}-${item.aluno_id}`));
+      const payload: Partial<DestinoDissertativa>[] = [];
+      const timestamp = new Date().toISOString();
+
+      selectedQuestaoIds.forEach(questaoId => {
+        targetAlunoIds.forEach(alunoId => {
+          const key = `${questaoId}-${alunoId}`;
+          if (!existingPairs.has(key)) {
+            payload.push({
+              questao_id: questaoId,
+              aluno_id: alunoId,
+              professor_id: currentUserId,
+              enviado_em: timestamp
+            });
+          }
+        });
+      });
+
+      if (payload.length === 0) {
+        showToast('Todas as questões já foram enviadas.', 'error');
+        setMassAssigning(false);
+        return;
+      }
+
+      const { error } = await supabase
+        .from('tbf_questoes_dissertativas_destinos')
+        .insert(payload);
+      if (error) throw error;
+
+      showToast(`Questões enviadas para ${targetAlunoIds.length} aluno(s)!`, 'success');
+      closeMassAssign();
+      setSelectedQuestaoIds([]);
+    } catch (error) {
+      console.error('Erro ao enviar questões:', error);
+      showToast('Erro ao enviar questões.', 'error');
+    } finally {
+      setMassAssigning(false);
     }
   };
 
@@ -1007,6 +1119,16 @@ export default function QuestoesDissertativas() {
                       Limpar
                     </button>
                   )}
+                  {selectedQuestaoIds.length > 0 && (
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm font-medium text-gray-500">
+                        {selectedQuestaoIds.length} selecionada(s)
+                      </span>
+                      <Button onClick={openMassAssign} className="bg-[#4318FF] hover:bg-[#3311CC]">
+                        Enviar selecionadas
+                      </Button>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -1014,6 +1136,14 @@ export default function QuestoesDissertativas() {
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="border-b border-gray-100">
+                      <th className="py-4 px-4 text-sm font-bold text-[#A3AED0] uppercase tracking-wider">
+                        <input
+                          type="checkbox"
+                          checked={allVisibleSelected}
+                          onChange={toggleAllVisible}
+                          className="w-4 h-4 text-[#4318FF] border-gray-300 rounded focus:ring-[#4318FF]"
+                        />
+                      </th>
                       <th className="py-4 px-4 text-sm font-bold text-[#A3AED0] uppercase tracking-wider">Disciplina</th>
                       <th className="py-4 px-4 text-sm font-bold text-[#A3AED0] uppercase tracking-wider">Série</th>
                       <th className="py-4 px-4 text-sm font-bold text-[#A3AED0] uppercase tracking-wider">Tema</th>
@@ -1025,19 +1155,27 @@ export default function QuestoesDissertativas() {
                   <tbody className="divide-y divide-gray-50">
                     {loading ? (
                       <tr>
-                        <td colSpan={6} className="py-10 text-center">
+                        <td colSpan={7} className="py-10 text-center">
                           <Spinner size="md" />
                         </td>
                       </tr>
                     ) : filteredQuestoes.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="py-10 text-center text-gray-400">
+                        <td colSpan={7} className="py-10 text-center text-gray-400">
                           Nenhuma questão encontrada.
                         </td>
                       </tr>
                     ) : (
                       filteredQuestoes.map(questao => (
                         <tr key={questao.id} className="hover:bg-gray-50/50 transition-colors">
+                          <td className="py-4 px-4">
+                            <input
+                              type="checkbox"
+                              checked={selectedQuestaoIds.includes(questao.id)}
+                              onChange={() => toggleQuestaoSelection(questao.id)}
+                              className="w-4 h-4 text-[#4318FF] border-gray-300 rounded focus:ring-[#4318FF]"
+                            />
+                          </td>
                           <td className="py-4 px-4 text-sm font-bold text-[#2B3674]">{materiaName(questao.idmat)}</td>
                           <td className="py-4 px-4 text-sm text-gray-600">{serieName(questao.idserie)}</td>
                           <td className="py-4 px-4 text-sm text-gray-600">{temaName(questao.idtema)}</td>
@@ -1400,6 +1538,65 @@ export default function QuestoesDissertativas() {
             </div>
           </div>
         ) : null}
+      </Modal>
+
+      <Modal
+        isOpen={isMassAssignModalOpen}
+        onClose={closeMassAssign}
+        title="Enviar Questões Selecionadas"
+        className="max-w-3xl max-h-[90vh] overflow-y-auto"
+      >
+        <div className="space-y-6">
+          <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
+            <p className="text-sm font-bold text-gray-500 mb-2">Selecionadas</p>
+            <p className="text-sm text-gray-700">{selectedQuestaoIds.length} questão(ões)</p>
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-gray-700">Série (opcional)</label>
+            <select
+              value={massAssignSerieId}
+              onChange={(e) => {
+                const value = e.target.value;
+                setMassAssignSerieId(value);
+                if (value) setMassAssignAlunoId('');
+              }}
+              className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-700 focus:ring-2 focus:ring-[#4318FF] outline-none"
+            >
+              <option value="">Selecione</option>
+              {series.map(ser => (
+                <option key={ser.id} value={ser.id}>{ser.serie}</option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-gray-700">Aluno (opcional)</label>
+            <select
+              value={massAssignAlunoId}
+              onChange={(e) => {
+                const value = e.target.value;
+                setMassAssignAlunoId(value);
+                if (value) setMassAssignSerieId('');
+              }}
+              className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-700 focus:ring-2 focus:ring-[#4318FF] outline-none"
+            >
+              <option value="">Selecione</option>
+              {massAssignAlunos.map(aluno => (
+                <option key={aluno.id} value={aluno.id}>{capitalizeWords(`${aluno.nome} ${aluno.sobrenome || ''}`.trim())}</option>
+              ))}
+            </select>
+            {massAssignSerieId && massAssignAlunos.length === 0 && (
+              <p className="text-xs text-red-500">Nenhum aluno encontrado para a série.</p>
+            )}
+          </div>
+          <div className="flex gap-4 pt-4 border-t border-gray-100">
+            <Button variant="ghost" onClick={closeMassAssign} className="flex-1">
+              Cancelar
+            </Button>
+            <Button onClick={handleMassAssign} className="flex-1 bg-[#4318FF] hover:bg-[#3311CC]" isLoading={massAssigning}>
+              Enviar Questões
+            </Button>
+          </div>
+        </div>
       </Modal>
 
       <Modal

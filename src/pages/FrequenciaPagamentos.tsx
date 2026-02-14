@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/Button';
@@ -101,11 +101,11 @@ export const FrequenciaPagamentos: React.FC = () => {
 
   const isStaff = userRole === 'admin' || userRole === 'professor';
 
-  const showToast = (message: string, type: ToastType) => {
+  const showToast = useCallback((message: string, type: ToastType) => {
     setToast({ message, type });
-  };
+  }, []);
 
-  const fetchInitialData = async () => {
+  const fetchInitialData = useCallback(async () => {
     setLoading(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -154,11 +154,11 @@ export const FrequenciaPagamentos: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [showToast]);
 
   useEffect(() => {
     fetchInitialData();
-  }, []);
+  }, [fetchInitialData]);
 
   const alunoNome = (id: string) => {
     const aluno = alunos.find(a => a.id === id);

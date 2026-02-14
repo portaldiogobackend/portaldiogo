@@ -4,7 +4,7 @@ import { Spinner } from '@/components/ui/Spinner';
 import { Toast, type ToastType } from '@/components/ui/Toast';
 import { supabase } from '@/lib/supabase';
 import { AlertTriangle, ArrowUpDown, ChevronLeft, ClipboardList, FileText, Filter, Menu, Minus, Pencil, Plus, Search, Trash2, Upload, X } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
 import { useNavigate } from 'react-router-dom';
@@ -163,15 +163,11 @@ export default function AdminTestes() {
     idseries: [] as string[]
   });
 
-  const showToast = (message: string, type: ToastType) => {
+  const showToast = useCallback((message: string, type: ToastType) => {
     setToast({ message, type });
-  };
-
-  useEffect(() => {
-    fetchInitialData();
   }, []);
 
-  const fetchInitialData = async () => {
+  const fetchInitialData = useCallback(async () => {
     setLoading(true);
     try {
       // Fetch user data
@@ -244,7 +240,11 @@ export default function AdminTestes() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [showToast]);
+
+  useEffect(() => {
+    fetchInitialData();
+  }, [fetchInitialData]);
 
   // Filter temas based on selected materias and series
   const filteredTemas = useMemo(() => {
@@ -331,7 +331,7 @@ export default function AdminTestes() {
   }, [alunos, massiveFormData.idmat, massiveFormData.idseries]);
 
   // Helper to get names from IDs for sorting
-  const getTesteNamesForSort = (teste: Teste, type: 'materia' | 'tema' | 'serie') => {
+  const getTesteNamesForSort = useCallback((teste: Teste, type: 'materia' | 'tema' | 'serie') => {
     if (type === 'materia') {
       return materias
         .filter(m => teste.idmat?.includes(m.id))
@@ -351,7 +351,7 @@ export default function AdminTestes() {
         .join(', ') || '';
     }
     return '';
-  };
+  }, [materias, series, temas]);
 
   // Report filters logic
   const hasActiveReportFilters = reportFilterMateria || reportFilterTema || reportFilterSerie || reportSearchTerm;
@@ -418,7 +418,7 @@ export default function AdminTestes() {
     }
 
     return result;
-  }, [testes, reportFilterMateria, reportFilterTema, reportFilterSerie, reportSearchTerm, reportSortConfig, materias, temas, series]);
+  }, [testes, reportFilterMateria, reportFilterTema, reportFilterSerie, reportSearchTerm, reportSortConfig, getTesteNamesForSort]);
 
   const handleLogout = async () => {
     try {
@@ -529,13 +529,23 @@ export default function AdminTestes() {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       const file = e.target.files[0];
-      if (file.name.endsWith('.txt')) {
-        setMassiveFile(file);
-        setImportLog(null);
-      } else {
-        showToast('Por favor, selecione um arquivo .txt', 'error');
+      const extension = file.name.toLowerCase().match(/\.[^.]+$/)?.[0] || '';
+      const allowedExtensions = ['.txt', '.doc', '.docx', '.pdf'];
+
+      if (!allowedExtensions.includes(extension)) {
+        showToast('Formato inválido. Use .txt, .doc, .docx ou .pdf.', 'error');
         e.target.value = '';
+        return;
       }
+
+      if (extension !== '.txt') {
+        showToast('No momento, apenas arquivos .txt podem ser importados. Converta e tente novamente.', 'error');
+        e.target.value = '';
+        return;
+      }
+
+      setMassiveFile(file);
+      setImportLog(null);
     }
   };
 
@@ -566,9 +576,22 @@ export default function AdminTestes() {
         return;
       }
 
-      const lines = text.split(/\r?\n/).map(line => line.trim()).filter(line => line !== '');
+      const lines = text
+        .split(/\r?\n/)
+        .map(line => line.trim())
+        .filter(line => line !== '' && !line.startsWith('#') && !line.startsWith('//'));
+
+      if (lines.length !== 10) {
+        const errors = [`O arquivo deve conter exatamente 10 questões. Encontradas: ${lines.length}.`];
+        setImporting(false);
+        setImportLog({ success: 0, errors });
+        showToast('Quantidade de questões inválida. Verifique o arquivo.', 'error');
+        return;
+      }
+
       let successCount = 0;
       const errors: string[] = [];
+      const questionsSeen = new Set<string>();
 
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
@@ -589,6 +612,17 @@ export default function AdminTestes() {
           continue;
         }
 
+        const normalizedQuestion = stripHtml(pergunta).toLowerCase().replace(/\s+/g, ' ').trim();
+        if (!normalizedQuestion) {
+          errors.push(`Linha ${i + 1}: Pergunta inválida ou vazia após limpeza.`);
+          continue;
+        }
+        if (questionsSeen.has(normalizedQuestion)) {
+          errors.push(`Linha ${i + 1}: Pergunta duplicada.`);
+          continue;
+        }
+        questionsSeen.add(normalizedQuestion);
+
         const resposta = parseInt(respostaStr);
         if (isNaN(resposta) || resposta < 1 || resposta > 10) {
            errors.push(`Linha ${i + 1}: Resposta deve ser um número entre 1 e 10.`);
@@ -602,6 +636,10 @@ export default function AdminTestes() {
         }
         if (resposta > alts.length) {
           errors.push(`Linha ${i + 1}: Resposta deve estar entre 1 e ${alts.length}.`);
+          continue;
+        }
+        if (!stripHtml(justificativa).trim()) {
+          errors.push(`Linha ${i + 1}: Justificativa é obrigatória.`);
           continue;
         }
 
@@ -869,6 +907,10 @@ export default function AdminTestes() {
     }
     if (formData.resposta < 1 || formData.resposta > filledAlternativas.length) {
       showToast(`Selecione uma resposta entre 1 e ${filledAlternativas.length}.`, 'error');
+      return;
+    }
+    if (!stripHtml(formData.justificativa).trim()) {
+      showToast('Digite a justificativa.', 'error');
       return;
     }
 
@@ -1562,7 +1604,7 @@ export default function AdminTestes() {
             </div>
             <div className="text-sm text-blue-800">
               <p className="font-bold mb-1">Instruções de Importação</p>
-              <p className="mb-2">Envie um arquivo <strong>.txt</strong> com os dados separados por pipe ( | ).</p>
+              <p className="mb-2">Envie um arquivo <strong>.txt</strong> com os dados separados por pipe ( | ). Arquivos .doc/.docx/.pdf devem ser convertidos para .txt.</p>
               <p className="font-mono text-xs bg-white/50 p-2 rounded border border-blue-200">
                 Pergunta | Alternativa1;Alternativa2... | Resposta (1-10) | Justificativa
               </p>
@@ -1648,11 +1690,11 @@ export default function AdminTestes() {
 
           {/* File Upload */}
           <div className="space-y-2">
-            <label className="text-sm font-medium text-gray-700">Arquivo de Importação (.txt) *</label>
+            <label className="text-sm font-medium text-gray-700">Arquivo de Importação (.txt, .doc, .docx, .pdf) *</label>
             <div className={`border-2 border-dashed rounded-xl p-6 text-center transition-colors ${massiveFile ? 'border-[#4318FF] bg-blue-50' : 'border-gray-300 hover:border-[#4318FF]'}`}>
               <input
                 type="file"
-                accept=".txt"
+                accept=".txt,.doc,.docx,.pdf"
                 onChange={handleFileChange}
                 className="hidden"
                 id="file-upload"
@@ -1662,7 +1704,7 @@ export default function AdminTestes() {
                 {massiveFile ? (
                   <span className="text-sm font-bold text-[#4318FF]">{massiveFile.name}</span>
                 ) : (
-                  <span className="text-sm text-gray-500">Clique para selecionar um arquivo .txt</span>
+                  <span className="text-sm text-gray-500">Clique para selecionar um arquivo</span>
                 )}
               </label>
             </div>
