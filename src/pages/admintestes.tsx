@@ -123,6 +123,7 @@ export default function AdminTestes() {
   const [reportFilterSerie, setReportFilterSerie] = useState<string>('');
   const [reportSearchTerm, setReportSearchTerm] = useState<string>('');
   const [reportSortConfig, setReportSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
+  const [selectedTesteIds, setSelectedTesteIds] = useState<string[]>([]);
 
   // Modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -419,6 +420,25 @@ export default function AdminTestes() {
 
     return result;
   }, [testes, reportFilterMateria, reportFilterTema, reportFilterSerie, reportSearchTerm, reportSortConfig, getTesteNamesForSort]);
+
+  const visibleTesteIds = useMemo(() => filteredTestesReport.map(teste => teste.id), [filteredTestesReport]);
+  const allVisibleSelected = visibleTesteIds.length > 0 && visibleTesteIds.every(id => selectedTesteIds.includes(id));
+
+  const toggleTesteSelection = (id: string) => {
+    setSelectedTesteIds(prev => prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]);
+  };
+
+  const toggleAllVisibleTestes = () => {
+    if (allVisibleSelected) {
+      setSelectedTesteIds(prev => prev.filter(id => !visibleTesteIds.includes(id)));
+      return;
+    }
+    setSelectedTesteIds(prev => {
+      const next = new Set(prev);
+      visibleTesteIds.forEach(id => next.add(id));
+      return Array.from(next);
+    });
+  };
 
   const handleLogout = async () => {
     try {
@@ -1092,7 +1112,12 @@ export default function AdminTestes() {
             <div className="bg-white rounded-3xl shadow-xl shadow-gray-200/40 overflow-hidden border-none p-8">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-xl font-bold text-[#1B2559]">Relatório de Testes Cadastrados</h2>
-                <span className="text-sm font-medium text-gray-500">{filteredTestesReport.length} de {testes.length} teste(s)</span>
+                <div className="flex items-center gap-4">
+                  <span className="text-sm font-medium text-gray-500">{filteredTestesReport.length} de {testes.length} teste(s)</span>
+                  {selectedTesteIds.length > 0 && (
+                    <span className="text-sm font-medium text-gray-500">{selectedTesteIds.length} selecionado(s)</span>
+                  )}
+                </div>
               </div>
 
               {/* Filters Bar */}
@@ -1177,6 +1202,16 @@ export default function AdminTestes() {
                 <table className="w-full text-left border-collapse">
                     <thead>
                       <tr className="border-b border-gray-100">
+                        <th className="py-4 px-4 text-sm font-bold text-[#A3AED0] uppercase tracking-wider">
+                          <div className="flex items-center justify-center">
+                            <input
+                              type="checkbox"
+                              checked={allVisibleSelected}
+                              onChange={toggleAllVisibleTestes}
+                              className="w-4 h-4 text-[#4318FF] border-gray-300 rounded focus:ring-[#4318FF]"
+                            />
+                          </div>
+                        </th>
                         <th 
                           className="py-4 px-4 text-sm font-bold text-[#A3AED0] uppercase tracking-wider cursor-pointer hover:text-[#4318FF] transition-colors group"
                           onClick={() => handleReportSort('materia')}
@@ -1212,13 +1247,13 @@ export default function AdminTestes() {
                   <tbody className="divide-y divide-gray-50">
                     {loading ? (
                       <tr>
-                        <td colSpan={6} className="py-10 text-center">
+                        <td colSpan={7} className="py-10 text-center">
                           <Spinner size="md" />
                         </td>
                       </tr>
                     ) : filteredTestesReport.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="py-10 text-center text-gray-400">
+                        <td colSpan={7} className="py-10 text-center text-gray-400">
                           {testes.length === 0 ? 'Nenhum teste cadastrado ainda.' : 'Nenhum teste encontrado com os filtros aplicados.'}
                         </td>
                       </tr>
@@ -1241,6 +1276,16 @@ export default function AdminTestes() {
 
                         return (
                           <tr key={teste.id} className="hover:bg-gray-50/50 transition-colors">
+                            <td className="py-4 px-4">
+                              <div className="flex items-center justify-center">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedTesteIds.includes(teste.id)}
+                                  onChange={() => toggleTesteSelection(teste.id)}
+                                  className="w-4 h-4 text-[#4318FF] border-gray-300 rounded focus:ring-[#4318FF]"
+                                />
+                              </div>
+                            </td>
                             <td className="py-4 px-4 text-sm font-bold text-[#2B3674] max-w-[150px] truncate" title={materiaNames}>
                               {materiaNames || '-'}
                             </td>

@@ -14,6 +14,7 @@ interface UserProfile {
   nome: string;
   sobrenome: string;
   email: string;
+  telefone?: string | null;
   signature: string;
   role: string;
   created_at: string;
@@ -49,6 +50,7 @@ const Usuarios: React.FC = () => {
   const [userToDelete, setUserToDelete] = useState<UserProfile | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [userToEdit, setUserToEdit] = useState<UserProfile | null>(null);
+  const [showCreateModal, setShowCreateModal] = useState(false);
   const [editForm, setEditForm] = useState({
     nome: '',
     sobrenome: '',
@@ -57,7 +59,16 @@ const Usuarios: React.FC = () => {
     materias: [] as string[],
     serie: ''
   });
+  const [createForm, setCreateForm] = useState({
+    nome: '',
+    sobrenome: '',
+    telefone: '',
+    email: '',
+    senha: ''
+  });
   const [isSaving, setIsSaving] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [usersPerPage] = useState(10);
 
@@ -244,6 +255,93 @@ const Usuarios: React.FC = () => {
     }
   };
 
+  const openCreateModal = () => {
+    setCreateForm({
+      nome: '',
+      sobrenome: '',
+      telefone: '',
+      email: '',
+      senha: ''
+    });
+    setCreateError(null);
+    setShowCreateModal(true);
+  };
+
+  const handleCreateSave = async () => {
+    const nome = createForm.nome.trim();
+    const sobrenome = createForm.sobrenome.trim();
+    const telefone = createForm.telefone.trim();
+    const email = createForm.email.trim().toLowerCase();
+    const senha = createForm.senha.trim();
+    const telefoneNumeros = telefone.replace(/\D/g, '');
+
+    if (!nome || !telefone) {
+      setCreateError('Nome e telefone são obrigatórios.');
+      return;
+    }
+
+    if (telefoneNumeros.length < 10) {
+      setCreateError('Por favor, insira um número de celular válido.');
+      return;
+    }
+
+    if (senha && !email) {
+      setCreateError('Informe o e-mail para criar senha de acesso.');
+      return;
+    }
+
+    if (email) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        setCreateError('E-mail inválido.');
+        return;
+      }
+    }
+
+    setIsCreating(true);
+    setCreateError(null);
+
+    try {
+      const payload = {
+        nome: capitalizeWords(nome),
+        sobrenome: capitalizeWords(sobrenome),
+        telefone,
+        email,
+        senha,
+        role: 'aluno',
+        signature: 'ativo'
+      };
+
+      const { data, error } = await supabase.functions.invoke('admin-create-user', {
+        body: payload
+      });
+
+      if (error) throw error;
+      if (!data?.user) throw new Error('Erro ao criar usuário.');
+
+      await logAudit('create_user', data.user.id, {
+        email: data.user.email,
+        nome: `${data.user.nome} ${data.user.sobrenome || ''}`.trim()
+      });
+
+      setShowCreateModal(false);
+      setCreateForm({
+        nome: '',
+        sobrenome: '',
+        telefone: '',
+        email: '',
+        senha: ''
+      });
+
+      fetchAllUsers();
+    } catch (error) {
+      console.error('Error creating user:', error);
+      setCreateError('Erro ao criar usuário. Verifique as permissões e o serviço de e-mail.');
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
   const toggleMateria = (materiaId: string) => {
     setEditForm(prev => {
       const currentMaterias = prev.materias || [];
@@ -383,6 +481,23 @@ const Usuarios: React.FC = () => {
   const handleSearch = () => {
     setSearchQuery(tempSearchQuery);
     setCurrentPage(1);
+  };
+
+  const formatPhoneNumber = (value: string) => {
+    const numbers = value.replace(/\D/g, '');
+    if (numbers.length <= 11) {
+      let formatted = numbers;
+      if (numbers.length > 0) formatted = `(${numbers.slice(0, 2)}`;
+      if (numbers.length > 2) formatted += `) ${numbers.slice(2, 7)}`;
+      if (numbers.length > 7) formatted += `-${numbers.slice(7, 11)}`;
+      return formatted;
+    }
+    return value.slice(0, 15);
+  };
+
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const formatted = formatPhoneNumber(e.target.value);
+    setCreateForm({ ...createForm, telefone: formatted });
   };
 
   const clearFilters = () => {
@@ -571,6 +686,83 @@ const Usuarios: React.FC = () => {
         </div>
       </Modal>
 
+      <Modal
+        isOpen={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        title="Novo Usuário"
+      >
+        <div className="space-y-4">
+          {createError && (
+            <div className="bg-red-50 text-red-600 text-sm rounded-lg px-4 py-2">
+              {createError}
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <label className="text-sm font-bold text-[#1B2559]">Nome *</label>
+              <input
+                type="text"
+                value={createForm.nome}
+                onChange={(e) => setCreateForm({ ...createForm, nome: e.target.value })}
+                className="w-full px-4 py-2 bg-[#F4F7FE] border-none rounded-xl text-[#2B3674] focus:ring-2 focus:ring-[#0061FF]/20 outline-none"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-bold text-[#1B2559]">Sobrenome</label>
+              <input
+                type="text"
+                value={createForm.sobrenome}
+                onChange={(e) => setCreateForm({ ...createForm, sobrenome: e.target.value })}
+                className="w-full px-4 py-2 bg-[#F4F7FE] border-none rounded-xl text-[#2B3674] focus:ring-2 focus:ring-[#0061FF]/20 outline-none"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-bold text-[#1B2559]">Telefone *</label>
+            <input
+              type="tel"
+              value={createForm.telefone}
+              onChange={handlePhoneChange}
+              className="w-full px-4 py-2 bg-[#F4F7FE] border-none rounded-xl text-[#2B3674] focus:ring-2 focus:ring-[#0061FF]/20 outline-none"
+              placeholder="(99) 99999-9999"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-bold text-[#1B2559]">E-mail</label>
+            <input
+              type="email"
+              value={createForm.email}
+              onChange={(e) => setCreateForm({ ...createForm, email: e.target.value })}
+              className="w-full px-4 py-2 bg-[#F4F7FE] border-none rounded-xl text-[#2B3674] focus:ring-2 focus:ring-[#0061FF]/20 outline-none"
+              placeholder="email@dominio.com"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-bold text-[#1B2559]">Senha de Acesso</label>
+            <input
+              type="password"
+              value={createForm.senha}
+              onChange={(e) => setCreateForm({ ...createForm, senha: e.target.value })}
+              className="w-full px-4 py-2 bg-[#F4F7FE] border-none rounded-xl text-[#2B3674] focus:ring-2 focus:ring-[#0061FF]/20 outline-none"
+              placeholder="Opcional"
+            />
+            <p className="text-xs text-[#A3AED0]">Ao informar senha, o e-mail é obrigatório e será enviado com login e senha.</p>
+          </div>
+
+          <div className="flex justify-end gap-3 mt-6">
+            <Button variant="ghost" onClick={() => setShowCreateModal(false)}>
+              Cancelar
+            </Button>
+            <Button variant="primary" onClick={handleCreateSave} isLoading={isCreating}>
+              Criar Usuário
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
       <div className="flex-1 flex flex-col overflow-hidden w-full relative">
         <header className="min-h-[80px] md:h-24 flex items-center justify-between px-4 md:px-10 py-4 gap-4 bg-[#F4F7FE] md:bg-transparent z-10">
           <div className="flex items-center gap-4">
@@ -591,6 +783,10 @@ const Usuarios: React.FC = () => {
           </div>
           
           <h1 className="text-xl md:text-2xl font-bold text-[#1B2559] truncate">Gerenciamento de Usuários</h1>
+          <Button variant="primary" onClick={openCreateModal} className="hidden md:flex">
+            <Plus size={16} className="mr-2" />
+            Novo Usuário
+          </Button>
         </header>
 
         <main className="flex-1 overflow-y-auto p-4 md:p-10 pt-0 md:pt-4">
@@ -622,6 +818,10 @@ const Usuarios: React.FC = () => {
                     </div>
                     <Button variant="primary" size="sm" onClick={handleSearch}>
                       Buscar
+                    </Button>
+                    <Button variant="primary" size="sm" onClick={openCreateModal} className="md:hidden">
+                      <Plus size={16} className="mr-2" />
+                      Novo Usuário
                     </Button>
                   </div>
                 </div>
