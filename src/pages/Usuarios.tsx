@@ -60,7 +60,8 @@ const Usuarios: React.FC = () => {
     role: '',
     materias: [] as string[],
     serie: '',
-    emailaluno: ''
+    emailaluno: '',
+    linkedAlunoIds: [] as string[]
   });
   const [createForm, setCreateForm] = useState({
     nome: '',
@@ -206,6 +207,12 @@ const Usuarios: React.FC = () => {
   };
 
   const handleEditClick = (user: UserProfile) => {
+    const linkedIds = (user.emailaluno || '')
+      .split(',')
+      .map(item => item.trim().toLowerCase())
+      .filter(Boolean)
+      .map(email => alunosForLink.find(aluno => aluno.email?.toLowerCase() === email)?.id)
+      .filter((id): id is string => Boolean(id));
     setUserToEdit(user);
     setEditForm({
       nome: user.nome || '',
@@ -214,7 +221,8 @@ const Usuarios: React.FC = () => {
       role: user.role || 'aluno',
       materias: user.materias || [],
       serie: user.serie || '',
-      emailaluno: user.emailaluno || ''
+      emailaluno: user.emailaluno || '',
+      linkedAlunoIds: linkedIds
     });
     setShowEditModal(true);
   };
@@ -223,6 +231,16 @@ const Usuarios: React.FC = () => {
     if (!userToEdit) return;
 
     try {
+      const linkedAlunoEmails = alunosForLink
+        .filter(aluno => editForm.linkedAlunoIds.includes(aluno.id))
+        .map(aluno => aluno.email)
+        .filter(Boolean);
+
+      if (editForm.role === 'pai' && linkedAlunoEmails.length === 0) {
+        alert('Selecione pelo menos um aluno para vincular.');
+        return;
+      }
+
       setIsSaving(true);
       const { error } = await supabase
         .from('tbf_controle_user')
@@ -233,7 +251,7 @@ const Usuarios: React.FC = () => {
           role: editForm.role,
           materias: editForm.role === 'aluno' ? editForm.materias : [], // Only save materias if role is aluno
           serie: editForm.serie,
-          emailaluno: editForm.role === 'pai' ? editForm.emailaluno : ''
+          emailaluno: editForm.role === 'pai' ? linkedAlunoEmails.join(', ') : ''
         })
         .eq('id', userToEdit.id);
 
@@ -248,7 +266,8 @@ const Usuarios: React.FC = () => {
 
       setUsers(users.map(u => u.id === userToEdit.id ? { 
         ...u, 
-        ...editForm, 
+        ...editForm,
+        emailaluno: editForm.role === 'pai' ? linkedAlunoEmails.join(', ') : '',
         materias: editForm.role === 'aluno' ? editForm.materias : [],
         tbf_serie: selectedSerie ? { serie: selectedSerie.serie } : u.tbf_serie
       } : u));
@@ -400,6 +419,27 @@ const Usuarios: React.FC = () => {
   const alunosForLink = useMemo(() => {
     return users.filter(user => user.role === 'aluno' && user.email);
   }, [users]);
+
+  const toggleEditAlunoLink = (id: string) => {
+    setEditForm(prev => {
+      const exists = prev.linkedAlunoIds.includes(id);
+      return {
+        ...prev,
+        linkedAlunoIds: exists ? prev.linkedAlunoIds.filter(item => item !== id) : [...prev.linkedAlunoIds, id]
+      };
+    });
+  };
+
+  const toggleAllEditAlunoLinks = () => {
+    setEditForm(prev => {
+      const allIds = alunosForLink.map(aluno => aluno.id);
+      const allSelected = allIds.length > 0 && allIds.every(id => prev.linkedAlunoIds.includes(id));
+      return {
+        ...prev,
+        linkedAlunoIds: allSelected ? [] : allIds
+      };
+    });
+  };
 
   const toggleCreateAlunoLink = (id: string) => {
     setCreateForm(prev => {
@@ -695,7 +735,15 @@ const Usuarios: React.FC = () => {
               <label className="text-sm font-bold text-[#1B2559]">Cargo</label>
               <select 
                 value={editForm.role}
-                onChange={(e) => setEditForm({ ...editForm, role: e.target.value })}
+                onChange={(e) => {
+                  const role = e.target.value;
+                  setEditForm(prev => ({
+                    ...prev,
+                    role,
+                    linkedAlunoIds: role === 'pai' ? prev.linkedAlunoIds : [],
+                    emailaluno: role === 'pai' ? prev.emailaluno : ''
+                  }));
+                }}
                 className="w-full px-4 py-2 bg-[#F4F7FE] border-none rounded-xl text-[#2B3674] focus:ring-2 focus:ring-[#0061FF]/20 outline-none appearance-none"
               >
                 <option value="admin">Admin</option>
@@ -704,6 +752,47 @@ const Usuarios: React.FC = () => {
               </select>
             </div>
           </div>
+
+          {editForm.role === 'pai' && (
+            <div className="space-y-2 mt-2 pt-2 border-t border-gray-100">
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-bold text-[#1B2559]">Alunos vinculados *</label>
+                {alunosForLink.length > 0 && (
+                  <label className="flex items-center gap-2 text-xs text-[#7A8398] cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={alunosForLink.length > 0 && alunosForLink.every(aluno => editForm.linkedAlunoIds.includes(aluno.id))}
+                      onChange={toggleAllEditAlunoLinks}
+                      className="w-4 h-4 rounded border-gray-300 text-[#0061FF] focus:ring-[#0061FF]"
+                    />
+                    Selecionar todos
+                  </label>
+                )}
+              </div>
+              <div className="bg-[#F4F7FE] p-4 rounded-xl max-h-48 overflow-y-auto">
+                {alunosForLink.length === 0 ? (
+                  <p className="text-sm text-[#A3AED0]">Nenhum aluno com e-mail cadastrado.</p>
+                ) : (
+                  <div className="grid grid-cols-1 gap-2">
+                    {alunosForLink.map((aluno) => (
+                      <label key={aluno.id} className="flex items-center gap-2 cursor-pointer hover:bg-white/50 p-2 rounded-lg transition-colors">
+                        <input
+                          type="checkbox"
+                          checked={editForm.linkedAlunoIds.includes(aluno.id)}
+                          onChange={() => toggleEditAlunoLink(aluno.id)}
+                          className="w-4 h-4 rounded border-gray-300 text-[#0061FF] focus:ring-[#0061FF]"
+                        />
+                        <span className="text-sm font-medium text-[#2B3674]">
+                          {capitalizeWords(`${aluno.nome} ${aluno.sobrenome || ''}`.trim())}
+                        </span>
+                        <span className="text-xs text-[#A3AED0]">{aluno.email}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {editForm.role === 'aluno' && (
              <div className="space-y-2 mt-2 pt-2 border-t border-gray-100">

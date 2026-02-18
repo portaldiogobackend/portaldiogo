@@ -35,6 +35,14 @@ interface Prova {
   acerto: boolean;
 }
 
+interface LinkedAluno {
+  id: string;
+  nome: string;
+  sobrenome?: string | null;
+  email?: string | null;
+  materias?: string[] | null;
+}
+
 export const StudentDashboard: React.FC = () => {
   const navigate = useNavigate();
   const [userName, setUserName] = useState<string>('Aluno');
@@ -54,6 +62,9 @@ export const StudentDashboard: React.FC = () => {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const [isParent, setIsParent] = useState(false);
+  const [linkedAlunos, setLinkedAlunos] = useState<LinkedAluno[]>([]);
+  const [selectedAlunoId, setSelectedAlunoId] = useState('');
   const completedTestIds = useMemo(() => new Set(provas.map(prova => prova.idteste)), [provas]);
 
   const stripHtml = (html: string) => {
@@ -64,7 +75,7 @@ export const StudentDashboard: React.FC = () => {
 
   const materiaLabel = (id: string) => userMaterias.find(m => m.id === id)?.materia || '—';
 
-  const fetchDashboardData = useCallback(async () => {
+  const fetchDashboardData = useCallback(async (overrideAlunoId?: string) => {
     try {
       setLoading(true);
       
@@ -79,7 +90,7 @@ export const StudentDashboard: React.FC = () => {
       console.log('[Dashboard] Buscando dados do aluno:', user.id);
       const { data: userData, error: userError } = await supabase
         .from('tbf_controle_user')
-        .select('nome, sobrenome, signature, role, materias')
+        .select('nome, sobrenome, signature, role, materias, emailaluno')
         .eq('id', user.id)
         .single();
 
@@ -88,31 +99,76 @@ export const StudentDashboard: React.FC = () => {
         throw userError;
       }
 
-      // Verificar se o usuário é aluno e está ativo
-      if (userData.role !== 'aluno') {
-        navigate('/setup-inicial');
-        return;
-      }
-
       if (userData.signature !== 'ativo') {
         navigate('/aguardando-aprovacao');
         return;
       }
 
-      // Definir nome do usuário
-      const firstName = userData?.nome ? userData.nome.split(' ')[0] : 'Aluno';
-      const firstInitial = userData?.nome ? userData.nome.charAt(0).toUpperCase() : 'A';
-      const lastInitial = userData?.sobrenome ? userData.sobrenome.charAt(0).toUpperCase() : 'L';
+      if (userData.role !== 'aluno' && userData.role !== 'pai') {
+        navigate('/setup-inicial');
+        return;
+      }
+
+      let targetAlunoId = user.id;
+      let targetNome = userData?.nome || '';
+      let targetSobrenome = userData?.sobrenome || '';
+      let targetMaterias = userData?.materias || [];
+      let parentLinked: LinkedAluno[] = [];
+
+      if (userData.role === 'pai') {
+        setIsParent(true);
+        const emails = (userData.emailaluno || '')
+          .split(',')
+          .map((item: string) => item.trim().toLowerCase())
+          .filter(Boolean);
+
+        if (emails.length > 0) {
+          const { data: linkedData } = await supabase
+            .from('tbf_controle_user')
+            .select('id, nome, sobrenome, email, materias')
+            .in('email', emails)
+            .eq('role', 'aluno')
+            .order('nome');
+
+          parentLinked = (linkedData as LinkedAluno[]) || [];
+          setLinkedAlunos(parentLinked);
+        } else {
+          setLinkedAlunos([]);
+        }
+
+        const stored = sessionStorage.getItem('parent_selected_aluno_id');
+        const storedValid = stored && parentLinked.some(aluno => aluno.id === stored);
+        const resolvedId = overrideAlunoId || (storedValid ? stored : parentLinked[0]?.id || '');
+
+        if (resolvedId && resolvedId !== selectedAlunoId) {
+          setSelectedAlunoId(resolvedId);
+        }
+
+        const selectedAluno = parentLinked.find(aluno => aluno.id === resolvedId) || parentLinked[0];
+        if (selectedAluno) {
+          targetAlunoId = selectedAluno.id;
+          targetNome = selectedAluno.nome || '';
+          targetSobrenome = selectedAluno.sobrenome || '';
+          targetMaterias = selectedAluno.materias || [];
+        }
+      } else {
+        setIsParent(false);
+        setLinkedAlunos([]);
+        setSelectedAlunoId('');
+      }
+
+      const firstName = targetNome ? targetNome.split(' ')[0] : 'Aluno';
+      const firstInitial = targetNome ? targetNome.charAt(0).toUpperCase() : 'A';
+      const lastInitial = targetSobrenome ? targetSobrenome.charAt(0).toUpperCase() : 'L';
       
       setUserName(firstName);
       setUserInitials(`${firstInitial}${lastInitial}`);
 
-      // Buscar matérias do aluno
-      if (userData.materias && userData.materias.length > 0) {
+      if (targetMaterias && targetMaterias.length > 0) {
         const { data: materiasData, error: materiasError } = await supabase
           .from('tbf_materias')
           .select('*')
-          .in('id', userData.materias);
+          .in('id', targetMaterias);
 
         if (!materiasError && materiasData) {
           setUserMaterias(materiasData);
@@ -126,7 +182,7 @@ export const StudentDashboard: React.FC = () => {
       const { data: testesData, error: testesError } = await supabase
         .from('tbf_testes')
         .select('id, pergunta, idmat, idtema, created_at')
-        .contains('idalunos', [user.id])
+        .contains('idalunos', [targetAlunoId])
         .order('created_at', { ascending: false });
 
       if (testesError) {
@@ -138,7 +194,7 @@ export const StudentDashboard: React.FC = () => {
       const { data: provasData, error: provasError } = await supabase
         .from('tbf_prova')
         .select('idteste, acerto')
-        .eq('idaluno', user.id);
+        .eq('idaluno', targetAlunoId);
 
       if (provasError) {
         console.error('Erro ao buscar provas:', provasError);
@@ -171,11 +227,17 @@ export const StudentDashboard: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [navigate]);
+  }, [navigate, selectedAlunoId]);
 
   useEffect(() => {
     fetchDashboardData();
   }, [fetchDashboardData]);
+
+  useEffect(() => {
+    if (!isParent || !selectedAlunoId) return;
+    sessionStorage.setItem('parent_selected_aluno_id', selectedAlunoId);
+    fetchDashboardData(selectedAlunoId);
+  }, [fetchDashboardData, isParent, selectedAlunoId]);
 
   const handleLogout = async () => {
     try {
@@ -289,6 +351,26 @@ export const StudentDashboard: React.FC = () => {
         {/* Dashboard Content */}
         <main className="flex-1 overflow-y-auto p-4 md:p-10 pt-0 md:pt-4">
           <div className="max-w-[1600px] mx-auto">
+            {isParent && (
+              <div className="bg-white rounded-2xl p-4 md:p-6 shadow-xl shadow-gray-200/40 border border-gray-100 mb-6">
+                <label className="text-sm font-bold text-[#1B2559]">Aluno vinculado</label>
+                {linkedAlunos.length === 0 ? (
+                  <p className="text-sm text-[#A3AED0] mt-2">Nenhum aluno vinculado ao seu cadastro.</p>
+                ) : (
+                  <select
+                    value={selectedAlunoId}
+                    onChange={(e) => setSelectedAlunoId(e.target.value)}
+                    className="mt-2 w-full px-4 py-3 bg-[#F4F7FE] border-none rounded-xl text-[#2B3674] focus:ring-2 focus:ring-[#0061FF]/20 outline-none"
+                  >
+                    {linkedAlunos.map(aluno => (
+                      <option key={aluno.id} value={aluno.id}>
+                        {aluno.nome} {aluno.sobrenome || ''}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            )}
             {/* Welcome Section */}
             <div className="mb-8 md:mb-10 relative overflow-hidden rounded-3xl p-8 md:p-12 bg-gradient-to-r from-[#0061FF] to-[#422AFB] text-white shadow-2xl shadow-blue-200/50">
               <div className="relative z-10">

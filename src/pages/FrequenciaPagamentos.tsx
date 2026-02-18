@@ -65,6 +65,7 @@ export const FrequenciaPagamentos: React.FC = () => {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: ToastType } | null>(null);
+  const [isParent, setIsParent] = useState(false);
 
   const [alunos, setAlunos] = useState<Aluno[]>([]);
   const [frequencias, setFrequencias] = useState<Frequencia[]>([]);
@@ -112,7 +113,7 @@ export const FrequenciaPagamentos: React.FC = () => {
       if (user) {
         const { data: userData, error: userError } = await supabase
           .from('tbf_controle_user')
-          .select('nome, role')
+          .select('nome, role, signature, emailaluno')
           .eq('id', user.id)
           .single();
 
@@ -121,9 +122,74 @@ export const FrequenciaPagamentos: React.FC = () => {
           setUserName(capitalizeWords(userData.nome.split(' ')[0]));
         }
         setUserRole(userData?.role ?? null);
-        if (userData?.role !== 'admin' && userData?.role !== 'professor') {
+        if (userData?.signature && userData.signature !== 'ativo') {
+          navigate('/aguardando-aprovacao');
           return;
         }
+        if (userData?.role !== 'admin' && userData?.role !== 'professor' && userData?.role !== 'pai') {
+          return;
+        }
+
+        if (userData?.role === 'pai') {
+          setIsParent(true);
+          const emails = (userData.emailaluno || '')
+            .split(',')
+            .map((item: string) => item.trim().toLowerCase())
+            .filter(Boolean);
+
+          if (emails.length === 0) {
+            setAlunos([]);
+            setFrequencias([]);
+            setPagamentos([]);
+            return;
+          }
+
+          const { data: linkedAlunos, error: linkedError } = await supabase
+            .from('tbf_controle_user')
+            .select('id, nome, sobrenome, serie')
+            .in('email', emails)
+            .eq('role', 'aluno')
+            .order('nome');
+          if (linkedError) throw linkedError;
+
+          const linked = (linkedAlunos as Aluno[]) || [];
+          setAlunos(linked);
+
+          const ids = linked.map(aluno => aluno.id);
+          if (ids.length === 0) {
+            setFrequencias([]);
+            setPagamentos([]);
+            return;
+          }
+
+          const stored = sessionStorage.getItem('parent_selected_aluno_id');
+          const storedValid = stored && ids.includes(stored);
+          if (!reportAlunoId) {
+            setReportAlunoId(storedValid ? stored : ids[0]);
+          }
+
+          const [frequenciasRes, pagamentosRes] = await Promise.all([
+            supabase
+              .from('tbf_frequencias')
+              .select('*')
+              .in('aluno_id', ids)
+              .order('data_aula', { ascending: false }),
+            supabase
+              .from('tbf_pagamentos')
+              .select('*')
+              .in('aluno_id', ids)
+              .order('data_pagamento', { ascending: false })
+          ]);
+
+          if (frequenciasRes.error) throw frequenciasRes.error;
+          if (pagamentosRes.error) throw pagamentosRes.error;
+
+          setFrequencias((frequenciasRes.data as Frequencia[]) || []);
+          setPagamentos((pagamentosRes.data as Pagamento[]) || []);
+          return;
+        }
+
+        setIsParent(false);
       }
 
       const [alunosRes, frequenciasRes, pagamentosRes] = await Promise.all([
@@ -154,11 +220,16 @@ export const FrequenciaPagamentos: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [showToast]);
+  }, [navigate, reportAlunoId, showToast]);
 
   useEffect(() => {
     fetchInitialData();
   }, [fetchInitialData]);
+
+  useEffect(() => {
+    if (!isParent || !reportAlunoId) return;
+    sessionStorage.setItem('parent_selected_aluno_id', reportAlunoId);
+  }, [isParent, reportAlunoId]);
 
   const alunoNome = (id: string) => {
     const aluno = alunos.find(a => a.id === id);
@@ -402,120 +473,122 @@ export const FrequenciaPagamentos: React.FC = () => {
               <div className="flex justify-center py-20">
                 <Spinner size="lg" />
               </div>
-            ) : !isStaff ? (
+            ) : !isStaff && !isParent ? (
               <div className="bg-white rounded-3xl p-10 text-center shadow-xl shadow-gray-200/40">
                 <h3 className="text-xl font-bold text-gray-700 mb-2">Acesso restrito</h3>
                 <p className="text-gray-400">Esta área é exclusiva para professores e administradores.</p>
               </div>
             ) : (
               <>
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <div className="bg-white rounded-3xl shadow-xl shadow-gray-200/40 border border-gray-100 p-6">
-                    <div className="flex items-center justify-between mb-4">
-                      <h2 className="text-lg font-bold text-[#1B2559]">Frequência</h2>
-                      <span className="text-sm text-gray-400">{frequencias.length} registros</span>
-                    </div>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="text-left text-gray-400 uppercase text-xs">
-                            <th className="py-2">Aluno</th>
-                            <th className="py-2">Data</th>
-                            <th className="py-2">Conteúdo</th>
-                            <th className="py-2 text-right">Ações</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {frequencias.length === 0 ? (
-                            <tr>
-                              <td colSpan={4} className="py-6 text-center text-gray-400">
-                                Nenhum registro de frequência.
-                              </td>
+                {isStaff && (
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div className="bg-white rounded-3xl shadow-xl shadow-gray-200/40 border border-gray-100 p-6">
+                      <div className="flex items-center justify-between mb-4">
+                        <h2 className="text-lg font-bold text-[#1B2559]">Frequência</h2>
+                        <span className="text-sm text-gray-400">{frequencias.length} registros</span>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="text-left text-gray-400 uppercase text-xs">
+                              <th className="py-2">Aluno</th>
+                              <th className="py-2">Data</th>
+                              <th className="py-2">Conteúdo</th>
+                              <th className="py-2 text-right">Ações</th>
                             </tr>
-                          ) : (
-                            frequencias.map((item) => (
-                              <tr key={item.id} className="border-t border-gray-100">
-                                <td className="py-3 font-medium text-[#1B2559]">{alunoNome(item.aluno_id)}</td>
-                                <td className="py-3">{formatDate(item.data_aula)}</td>
-                                <td className="py-3 text-gray-600 max-w-[240px] truncate">{item.conteudo_aula}</td>
-                                <td className="py-3">
-                                  <div className="flex items-center justify-end gap-2">
-                                    <button
-                                      className="p-2 rounded-lg text-[#4318FF] hover:bg-[#F4F7FE]"
-                                      onClick={() => openEditFrequencia(item)}
-                                    >
-                                      <Pencil size={16} />
-                                    </button>
-                                    <button
-                                      className="p-2 rounded-lg text-red-500 hover:bg-red-50"
-                                      onClick={() => confirmDelete('frequencia', item.id)}
-                                    >
-                                      <Trash2 size={16} />
-                                    </button>
-                                  </div>
+                          </thead>
+                          <tbody>
+                            {frequencias.length === 0 ? (
+                              <tr>
+                                <td colSpan={4} className="py-6 text-center text-gray-400">
+                                  Nenhum registro de frequência.
                                 </td>
                               </tr>
-                            ))
-                          )}
-                        </tbody>
-                      </table>
+                            ) : (
+                              frequencias.map((item) => (
+                                <tr key={item.id} className="border-t border-gray-100">
+                                  <td className="py-3 font-medium text-[#1B2559]">{alunoNome(item.aluno_id)}</td>
+                                  <td className="py-3">{formatDate(item.data_aula)}</td>
+                                  <td className="py-3 text-gray-600 max-w-[240px] truncate">{item.conteudo_aula}</td>
+                                  <td className="py-3">
+                                    <div className="flex items-center justify-end gap-2">
+                                      <button
+                                        className="p-2 rounded-lg text-[#4318FF] hover:bg-[#F4F7FE]"
+                                        onClick={() => openEditFrequencia(item)}
+                                      >
+                                        <Pencil size={16} />
+                                      </button>
+                                      <button
+                                        className="p-2 rounded-lg text-red-500 hover:bg-red-50"
+                                        onClick={() => confirmDelete('frequencia', item.id)}
+                                      >
+                                        <Trash2 size={16} />
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
-                  </div>
 
-                  <div className="bg-white rounded-3xl shadow-xl shadow-gray-200/40 border border-gray-100 p-6">
-                    <div className="flex items-center justify-between mb-4">
-                      <h2 className="text-lg font-bold text-[#1B2559]">Pagamentos</h2>
-                      <span className="text-sm text-gray-400">{pagamentos.length} registros</span>
-                    </div>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="text-left text-gray-400 uppercase text-xs">
-                            <th className="py-2">Aluno</th>
-                            <th className="py-2">Data</th>
-                            <th className="py-2">Período</th>
-                            <th className="py-2">Valor</th>
-                            <th className="py-2 text-right">Ações</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {pagamentos.length === 0 ? (
-                            <tr>
-                              <td colSpan={5} className="py-6 text-center text-gray-400">
-                                Nenhum pagamento registrado.
-                              </td>
+                    <div className="bg-white rounded-3xl shadow-xl shadow-gray-200/40 border border-gray-100 p-6">
+                      <div className="flex items-center justify-between mb-4">
+                        <h2 className="text-lg font-bold text-[#1B2559]">Pagamentos</h2>
+                        <span className="text-sm text-gray-400">{pagamentos.length} registros</span>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="text-left text-gray-400 uppercase text-xs">
+                              <th className="py-2">Aluno</th>
+                              <th className="py-2">Data</th>
+                              <th className="py-2">Período</th>
+                              <th className="py-2">Valor</th>
+                              <th className="py-2 text-right">Ações</th>
                             </tr>
-                          ) : (
-                            pagamentos.map((item) => (
-                              <tr key={item.id} className="border-t border-gray-100">
-                                <td className="py-3 font-medium text-[#1B2559]">{alunoNome(item.aluno_id)}</td>
-                                <td className="py-3">{formatDate(item.data_pagamento)}</td>
-                                <td className="py-3 text-gray-600">{item.periodo_referencia}</td>
-                                <td className="py-3 font-semibold text-[#1B2559]">{currencyFormatter.format(toNumber(item.valor_pago))}</td>
-                                <td className="py-3">
-                                  <div className="flex items-center justify-end gap-2">
-                                    <button
-                                      className="p-2 rounded-lg text-[#4318FF] hover:bg-[#F4F7FE]"
-                                      onClick={() => openEditPagamento(item)}
-                                    >
-                                      <Pencil size={16} />
-                                    </button>
-                                    <button
-                                      className="p-2 rounded-lg text-red-500 hover:bg-red-50"
-                                      onClick={() => confirmDelete('pagamento', item.id)}
-                                    >
-                                      <Trash2 size={16} />
-                                    </button>
-                                  </div>
+                          </thead>
+                          <tbody>
+                            {pagamentos.length === 0 ? (
+                              <tr>
+                                <td colSpan={5} className="py-6 text-center text-gray-400">
+                                  Nenhum pagamento registrado.
                                 </td>
                               </tr>
-                            ))
-                          )}
-                        </tbody>
-                      </table>
+                            ) : (
+                              pagamentos.map((item) => (
+                                <tr key={item.id} className="border-t border-gray-100">
+                                  <td className="py-3 font-medium text-[#1B2559]">{alunoNome(item.aluno_id)}</td>
+                                  <td className="py-3">{formatDate(item.data_pagamento)}</td>
+                                  <td className="py-3 text-gray-600">{item.periodo_referencia}</td>
+                                  <td className="py-3 font-semibold text-[#1B2559]">{currencyFormatter.format(toNumber(item.valor_pago))}</td>
+                                  <td className="py-3">
+                                    <div className="flex items-center justify-end gap-2">
+                                      <button
+                                        className="p-2 rounded-lg text-[#4318FF] hover:bg-[#F4F7FE]"
+                                        onClick={() => openEditPagamento(item)}
+                                      >
+                                        <Pencil size={16} />
+                                      </button>
+                                      <button
+                                        className="p-2 rounded-lg text-red-500 hover:bg-red-50"
+                                        onClick={() => confirmDelete('pagamento', item.id)}
+                                      >
+                                        <Trash2 size={16} />
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
 
                 <div className="bg-white rounded-3xl shadow-xl shadow-gray-200/40 border border-gray-100 p-6 space-y-6">
                   <div className="flex flex-wrap items-center justify-between gap-4">

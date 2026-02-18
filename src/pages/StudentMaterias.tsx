@@ -22,6 +22,14 @@ interface Materia {
   imagem?: string;
 }
 
+interface LinkedAluno {
+  id: string;
+  nome: string;
+  sobrenome?: string | null;
+  email?: string | null;
+  materias?: string[] | null;
+}
+
 export const StudentMaterias: React.FC = () => {
   const navigate = useNavigate();
   const [userName, setUserName] = useState<string>('Aluno');
@@ -32,8 +40,11 @@ export const StudentMaterias: React.FC = () => {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [isParent, setIsParent] = useState(false);
+  const [linkedAlunos, setLinkedAlunos] = useState<LinkedAluno[]>([]);
+  const [selectedAlunoId, setSelectedAlunoId] = useState('');
 
-  const fetchUserData = useCallback(async () => {
+  const fetchUserData = useCallback(async (overrideAlunoId?: string) => {
     try {
       setLoading(true);
       
@@ -46,37 +57,80 @@ export const StudentMaterias: React.FC = () => {
       // Buscar dados do usuário
       const { data: userData, error: userError } = await supabase
         .from('tbf_controle_user')
-        .select('nome, sobrenome, signature, role, materias')
+        .select('nome, sobrenome, signature, role, materias, emailaluno')
         .eq('id', user.id)
         .single();
 
       if (userError) throw userError;
-
-      // Verificar se o usuário é aluno e está ativo
-      if (userData.role !== 'aluno') {
-        navigate('/setup-inicial');
-        return;
-      }
 
       if (userData.signature !== 'ativo') {
         navigate('/aguardando-aprovacao');
         return;
       }
 
-      // Definir nome do usuário
-      const firstName = userData?.nome ? userData.nome.split(' ')[0] : 'Aluno';
-      const firstInitial = userData?.nome ? userData.nome.charAt(0).toUpperCase() : 'A';
-      const lastInitial = userData?.sobrenome ? userData.sobrenome.charAt(0).toUpperCase() : 'L';
+      if (userData.role !== 'aluno' && userData.role !== 'pai') {
+        navigate('/setup-inicial');
+        return;
+      }
+
+      let targetNome = userData?.nome || '';
+      let targetSobrenome = userData?.sobrenome || '';
+      let targetMaterias = userData?.materias || [];
+      let parentLinked: LinkedAluno[] = [];
+
+      if (userData.role === 'pai') {
+        setIsParent(true);
+        const emails = (userData.emailaluno || '')
+          .split(',')
+          .map((item: string) => item.trim().toLowerCase())
+          .filter(Boolean);
+
+        if (emails.length > 0) {
+          const { data: linkedData } = await supabase
+            .from('tbf_controle_user')
+            .select('id, nome, sobrenome, email, materias')
+            .in('email', emails)
+            .eq('role', 'aluno')
+            .order('nome');
+
+          parentLinked = (linkedData as LinkedAluno[]) || [];
+          setLinkedAlunos(parentLinked);
+        } else {
+          setLinkedAlunos([]);
+        }
+
+        const stored = sessionStorage.getItem('parent_selected_aluno_id');
+        const storedValid = stored && parentLinked.some(aluno => aluno.id === stored);
+        const resolvedId = overrideAlunoId || (storedValid ? stored : parentLinked[0]?.id || '');
+
+        if (resolvedId && resolvedId !== selectedAlunoId) {
+          setSelectedAlunoId(resolvedId);
+        }
+
+        const selectedAluno = parentLinked.find(aluno => aluno.id === resolvedId) || parentLinked[0];
+        if (selectedAluno) {
+          targetNome = selectedAluno.nome || '';
+          targetSobrenome = selectedAluno.sobrenome || '';
+          targetMaterias = selectedAluno.materias || [];
+        }
+      } else {
+        setIsParent(false);
+        setLinkedAlunos([]);
+        setSelectedAlunoId('');
+      }
+
+      const firstName = targetNome ? targetNome.split(' ')[0] : 'Aluno';
+      const firstInitial = targetNome ? targetNome.charAt(0).toUpperCase() : 'A';
+      const lastInitial = targetSobrenome ? targetSobrenome.charAt(0).toUpperCase() : 'L';
       
       setUserName(firstName);
       setUserInitials(`${firstInitial}${lastInitial}`);
 
-      // Buscar matérias do aluno
-      if (userData.materias && userData.materias.length > 0) {
+      if (targetMaterias && targetMaterias.length > 0) {
         const { data: materiasData, error: materiasError } = await supabase
           .from('tbf_materias')
           .select('*')
-          .in('id', userData.materias);
+          .in('id', targetMaterias);
 
         if (!materiasError && materiasData) {
           setUserMaterias(materiasData);
@@ -87,11 +141,17 @@ export const StudentMaterias: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [navigate]);
+  }, [navigate, selectedAlunoId]);
 
   useEffect(() => {
     fetchUserData();
   }, [fetchUserData]);
+
+  useEffect(() => {
+    if (!isParent || !selectedAlunoId) return;
+    sessionStorage.setItem('parent_selected_aluno_id', selectedAlunoId);
+    fetchUserData(selectedAlunoId);
+  }, [fetchUserData, isParent, selectedAlunoId]);
 
   const handleLogout = async () => {
     try {
@@ -190,6 +250,26 @@ export const StudentMaterias: React.FC = () => {
         {/* Matérias Content */}
         <main className="flex-1 overflow-y-auto p-4 md:p-10 pt-0 md:pt-4">
           <div className="max-w-[1600px] mx-auto">
+            {isParent && (
+              <div className="bg-white rounded-2xl p-4 md:p-6 shadow-xl shadow-gray-200/40 border border-gray-100 mb-6">
+                <label className="text-sm font-bold text-[#1B2559]">Aluno vinculado</label>
+                {linkedAlunos.length === 0 ? (
+                  <p className="text-sm text-[#A3AED0] mt-2">Nenhum aluno vinculado ao seu cadastro.</p>
+                ) : (
+                  <select
+                    value={selectedAlunoId}
+                    onChange={(e) => setSelectedAlunoId(e.target.value)}
+                    className="mt-2 w-full px-4 py-3 bg-[#F4F7FE] border-none rounded-xl text-[#2B3674] focus:ring-2 focus:ring-[#0061FF]/20 outline-none"
+                  >
+                    {linkedAlunos.map(aluno => (
+                      <option key={aluno.id} value={aluno.id}>
+                        {aluno.nome} {aluno.sobrenome || ''}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            )}
             {/* Page Title */}
             <div className="mb-8 md:mb-10">
               <h1 className="text-2xl md:text-3xl font-bold text-[#1B2559]">

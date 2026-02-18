@@ -118,7 +118,7 @@ export const Login: React.FC = () => {
         console.log('[Auth] Usuário já possui sessão ativa. Verificando perfil para redirecionamento...');
         try {
           const userData = await getOrCreateUserProfile(session.user);
-          if (userData.role === 'aluno') {
+          if (userData.role === 'aluno' || userData.role === 'pai') {
             if (userData.signature === 'ativo') {
               navigate('/aluno/dashboard');
             } else {
@@ -206,7 +206,7 @@ export const Login: React.FC = () => {
         console.log('[Auth] Perfil carregado com sucesso:', userData);
 
         // Lógica de redirecionamento baseada em role e signature
-        if (userData && userData.role === 'aluno') {
+        if (userData && (userData.role === 'aluno' || userData.role === 'pai')) {
           if (userData.signature === 'ativo') {
             console.log('[Auth] Redirecionando Aluno Ativo para dashboard');
             navigate('/aluno/dashboard');

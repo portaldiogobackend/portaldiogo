@@ -44,6 +44,13 @@ interface Tema {
   nometema: string;
 }
 
+interface LinkedAluno {
+  id: string;
+  nome: string;
+  sobrenome?: string | null;
+  email?: string | null;
+}
+
 type AttemptInfo = {
   count: number;
   hasCorrect: boolean;
@@ -62,6 +69,9 @@ export const TesteAlunos: React.FC = () => {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: ToastType } | null>(null);
+  const [isParent, setIsParent] = useState(false);
+  const [linkedAlunos, setLinkedAlunos] = useState<LinkedAluno[]>([]);
+  const [selectedAlunoId, setSelectedAlunoId] = useState('');
 
   const [testes, setTestes] = useState<Teste[]>([]);
   const [testesRealizados, setTestesRealizados] = useState<TesteRealizado[]>([]);
@@ -102,7 +112,7 @@ export const TesteAlunos: React.FC = () => {
     return DOMPurify.sanitize(decoded);
   };
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (overrideAlunoId?: string) => {
     try {
       setLoading(true);
       setError(null);
@@ -116,11 +126,67 @@ export const TesteAlunos: React.FC = () => {
       // Get user info
       const { data: userData } = await supabase
         .from('tbf_controle_user')
-        .select('nome')
+        .select('nome, sobrenome, role, signature, emailaluno')
         .eq('id', user.id)
         .single();
-      
-      if (userData) setUserName(userData.nome.split(' ')[0]);
+
+      if (userData?.signature && userData.signature !== 'ativo') {
+        navigate('/aguardando-aprovacao');
+        return;
+      }
+
+      if (!userData || (userData.role !== 'aluno' && userData.role !== 'pai')) {
+        navigate('/setup-inicial');
+        return;
+      }
+
+      let targetAlunoId = user.id;
+      let targetNome = userData?.nome || '';
+      let parentLinked: LinkedAluno[] = [];
+
+      if (userData.role === 'pai') {
+        setIsParent(true);
+        const emails = (userData.emailaluno || '')
+          .split(',')
+          .map((item: string) => item.trim().toLowerCase())
+          .filter(Boolean);
+
+        if (emails.length > 0) {
+          const { data: linkedData } = await supabase
+            .from('tbf_controle_user')
+            .select('id, nome, sobrenome, email')
+            .in('email', emails)
+            .eq('role', 'aluno')
+            .order('nome');
+
+          parentLinked = (linkedData as LinkedAluno[]) || [];
+          setLinkedAlunos(parentLinked);
+        } else {
+          setLinkedAlunos([]);
+        }
+
+        const stored = sessionStorage.getItem('parent_selected_aluno_id');
+        const storedValid = stored && parentLinked.some(aluno => aluno.id === stored);
+        const resolvedId = overrideAlunoId || (storedValid ? stored : parentLinked[0]?.id || '');
+
+        if (resolvedId && resolvedId !== selectedAlunoId) {
+          setSelectedAlunoId(resolvedId);
+        }
+
+        const selectedAluno = parentLinked.find(aluno => aluno.id === resolvedId) || parentLinked[0];
+        if (selectedAluno) {
+          targetAlunoId = selectedAluno.id;
+          targetNome = selectedAluno.nome || '';
+        }
+      } else {
+        setIsParent(false);
+        setLinkedAlunos([]);
+        setSelectedAlunoId('');
+      }
+
+      if (targetNome) {
+        setUserName(targetNome.split(' ')[0]);
+      }
 
       // Get Tests assigned to this student
       // Note: We need to filter tests where idalunos array contains user.id
@@ -128,7 +194,7 @@ export const TesteAlunos: React.FC = () => {
       const { data: testesData, error: testesError } = await supabase
         .from('tbf_testes')
         .select('*')
-        .contains('idalunos', [user.id])
+        .contains('idalunos', [targetAlunoId])
         .order('created_at', { ascending: false });
 
       if (testesError) throw testesError;
@@ -137,7 +203,7 @@ export const TesteAlunos: React.FC = () => {
       const { data: provasData, error: provasError } = await supabase
         .from('tbf_prova')
         .select('idteste, acerto')
-        .eq('idaluno', user.id);
+        .eq('idaluno', targetAlunoId);
 
       if (provasError) throw provasError;
 
@@ -158,11 +224,17 @@ export const TesteAlunos: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [navigate]);
+  }, [navigate, selectedAlunoId]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  useEffect(() => {
+    if (!isParent || !selectedAlunoId) return;
+    sessionStorage.setItem('parent_selected_aluno_id', selectedAlunoId);
+    fetchData(selectedAlunoId);
+  }, [fetchData, isParent, selectedAlunoId]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -176,6 +248,10 @@ export const TesteAlunos: React.FC = () => {
   };
 
   const handleSubmitAnswer = async () => {
+    if (isParent) {
+      setToast({ message: 'Acesso somente leitura para responsáveis.', type: 'error' });
+      return;
+    }
     if (!selectedTeste || selectedOption === null) return;
     const attemptInfo = getAttemptInfo(selectedTeste.id);
     if (attemptInfo.hasCorrect) {
@@ -325,6 +401,26 @@ export const TesteAlunos: React.FC = () => {
       <div className="flex-1 flex flex-col overflow-hidden w-full relative">
         <main className="flex-1 overflow-y-auto p-4 md:p-10">
           <div className="max-w-[1200px] mx-auto">
+            {isParent && (
+              <div className="bg-white rounded-2xl p-4 md:p-6 shadow-sm border border-gray-100 mb-6">
+                <label className="text-sm font-bold text-[#1B2559]">Aluno vinculado</label>
+                {linkedAlunos.length === 0 ? (
+                  <p className="text-sm text-gray-500 mt-2">Nenhum aluno vinculado ao seu cadastro.</p>
+                ) : (
+                  <select
+                    value={selectedAlunoId}
+                    onChange={(e) => setSelectedAlunoId(e.target.value)}
+                    className="mt-2 w-full px-4 py-3 bg-[#F4F7FE] border-none rounded-xl text-[#2B3674] focus:ring-2 focus:ring-[#4318FF]/20 outline-none"
+                  >
+                    {linkedAlunos.map(aluno => (
+                      <option key={aluno.id} value={aluno.id}>
+                        {aluno.nome} {aluno.sobrenome || ''}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            )}
             <div className="mb-8 flex flex-col md:block">
               <div className="flex items-center gap-3 mb-2 md:mb-0">
                 <button 

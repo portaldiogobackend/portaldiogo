@@ -57,6 +57,15 @@ interface DestinoDissertativa {
   questao_id: string;
 }
 
+interface LinkedAluno {
+  id: string;
+  nome: string;
+  sobrenome?: string | null;
+  email?: string | null;
+  idserie?: string | null;
+  idmat?: string[] | null;
+}
+
 const renderLatex = (html: string) => {
   if (!html) return '';
   const replacements: Array<{ regex: RegExp; displayMode: boolean }> = [
@@ -98,6 +107,9 @@ export const StudentDissertativas: React.FC = () => {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: ToastType } | null>(null);
+  const [isParent, setIsParent] = useState(false);
+  const [linkedAlunos, setLinkedAlunos] = useState<LinkedAluno[]>([]);
+  const [selectedAlunoId, setSelectedAlunoId] = useState('');
 
   const [materias, setMaterias] = useState<Materia[]>([]);
   const [series, setSeries] = useState<Serie[]>([]);
@@ -117,7 +129,7 @@ export const StudentDissertativas: React.FC = () => {
     setToast({ message, type });
   }, []);
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (overrideAlunoId?: string) => {
     setLoading(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -125,22 +137,83 @@ export const StudentDissertativas: React.FC = () => {
         navigate('/login');
         return;
       }
-      setCurrentUserId(user.id);
 
       const { data: userData } = await supabase
         .from('tbf_controle_user')
-        .select('nome, role, idserie, idmat')
+        .select('nome, sobrenome, role, signature, emailaluno, idserie, idmat')
         .eq('id', user.id)
         .single();
       if (userData?.nome) {
         setUserName(capitalizeWords(userData.nome.split(' ')[0]));
       }
-      if (userData?.role && userData.role !== 'aluno') {
-        navigate('/questoes-dissertativas', { replace: true });
+
+      if (userData?.signature && userData.signature !== 'ativo') {
+        navigate('/aguardando-aprovacao');
         return;
       }
-      setUserSerie(userData?.idserie || null);
-      setUserMaterias(userData?.idmat || []);
+
+      if (!userData || (userData.role !== 'aluno' && userData.role !== 'pai')) {
+        navigate('/setup-inicial');
+        return;
+      }
+
+      let targetAlunoId = user.id;
+      let targetSerie = userData?.idserie || null;
+      let targetMaterias = userData?.idmat || [];
+      let parentLinked: LinkedAluno[] = [];
+
+      if (userData.role === 'pai') {
+        setIsParent(true);
+        const emails = (userData.emailaluno || '')
+          .split(',')
+          .map((item: string) => item.trim().toLowerCase())
+          .filter(Boolean);
+
+        if (emails.length > 0) {
+          const { data: linkedData } = await supabase
+            .from('tbf_controle_user')
+            .select('id, nome, sobrenome, email, idserie, idmat')
+            .in('email', emails)
+            .eq('role', 'aluno')
+            .order('nome');
+
+          parentLinked = (linkedData as LinkedAluno[]) || [];
+          setLinkedAlunos(parentLinked);
+        } else {
+          setLinkedAlunos([]);
+        }
+
+        const stored = sessionStorage.getItem('parent_selected_aluno_id');
+        const storedValid = stored && parentLinked.some(aluno => aluno.id === stored);
+        const resolvedId = overrideAlunoId || (storedValid ? stored : parentLinked[0]?.id || '');
+
+        if (resolvedId && resolvedId !== selectedAlunoId) {
+          setSelectedAlunoId(resolvedId);
+        }
+
+        const selectedAluno = parentLinked.find(aluno => aluno.id === resolvedId) || parentLinked[0];
+        if (!selectedAluno) {
+          setUserSerie(null);
+          setUserMaterias([]);
+          setQuestoes([]);
+          setEnvios([]);
+          setCurrentUserId(null);
+          return;
+        }
+
+        targetAlunoId = selectedAluno.id;
+        targetSerie = selectedAluno.idserie || null;
+        targetMaterias = selectedAluno.idmat || [];
+        setUserName(capitalizeWords(selectedAluno.nome?.split(' ')[0] || 'Aluno'));
+      } else {
+        setIsParent(false);
+        setLinkedAlunos([]);
+        setSelectedAlunoId('');
+      }
+
+      setCurrentUserId(targetAlunoId);
+      setUserSerie(targetSerie);
+      setUserMaterias(targetMaterias);
 
       const [{ data: materiasData }, { data: seriesData }, { data: temasData }] = await Promise.all([
         supabase.from('tbf_materias').select('id, materia').order('materia'),
@@ -154,14 +227,14 @@ export const StudentDissertativas: React.FC = () => {
       const { data: destinosData } = await supabase
         .from('tbf_questoes_dissertativas_destinos')
         .select('questao_id')
-        .eq('aluno_id', user.id);
+        .eq('aluno_id', targetAlunoId);
 
       const questaoIds = (destinosData as DestinoDissertativa[] | null)?.map(d => d.questao_id) || [];
 
       const generalQuery = supabase.from('tbf_questoes_dissertativas').select('*').order('created_at', { ascending: false });
-      if (userData?.idserie) generalQuery.eq('idserie', userData.idserie);
-      if (userData?.idmat && userData.idmat.length > 0) {
-        generalQuery.in('idmat', userData.idmat);
+      if (targetSerie) generalQuery.eq('idserie', targetSerie);
+      if (targetMaterias && targetMaterias.length > 0) {
+        generalQuery.in('idmat', targetMaterias);
       }
 
       const [generalRes, assignedRes] = await Promise.all([
@@ -179,7 +252,7 @@ export const StudentDissertativas: React.FC = () => {
       const { data: enviosData } = await supabase
         .from('tbf_questoes_dissertativas_envios')
         .select('*')
-        .eq('aluno_id', user.id);
+        .eq('aluno_id', targetAlunoId);
       setEnvios((enviosData as EnvioDissertativa[]) || []);
     } catch (error) {
       console.error('Erro ao carregar dados:', error);
@@ -187,11 +260,17 @@ export const StudentDissertativas: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [navigate, showToast]);
+  }, [navigate, selectedAlunoId, showToast]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  useEffect(() => {
+    if (!isParent || !selectedAlunoId) return;
+    sessionStorage.setItem('parent_selected_aluno_id', selectedAlunoId);
+    fetchData(selectedAlunoId);
+  }, [fetchData, isParent, selectedAlunoId]);
 
   useEffect(() => {
     if (!currentUserId) return;
@@ -234,6 +313,10 @@ export const StudentDissertativas: React.FC = () => {
   };
 
   const handleSubmit = async (questao: QuestaoDissertativa) => {
+    if (isParent) {
+      showToast('Acesso somente leitura para responsáveis.', 'error');
+      return;
+    }
     if (!currentUserId) return;
     const existing = envioByQuestao(questao.id);
     if (existing) {
@@ -359,6 +442,26 @@ export const StudentDissertativas: React.FC = () => {
 
         <main className="flex-1 overflow-y-auto p-4 md:p-10 pt-0 md:pt-4">
           <div className="max-w-[1400px] mx-auto space-y-6">
+            {isParent && (
+              <div className="bg-white rounded-2xl p-4 md:p-6 shadow-xl shadow-gray-200/40 border border-gray-100">
+                <label className="text-sm font-bold text-[#1B2559]">Aluno vinculado</label>
+                {linkedAlunos.length === 0 ? (
+                  <p className="text-sm text-[#A3AED0] mt-2">Nenhum aluno vinculado ao seu cadastro.</p>
+                ) : (
+                  <select
+                    value={selectedAlunoId}
+                    onChange={(e) => setSelectedAlunoId(e.target.value)}
+                    className="mt-2 w-full px-4 py-3 bg-[#F4F7FE] border-none rounded-xl text-[#2B3674] focus:ring-2 focus:ring-[#0061FF]/20 outline-none"
+                  >
+                    {linkedAlunos.map(aluno => (
+                      <option key={aluno.id} value={aluno.id}>
+                        {aluno.nome} {aluno.sobrenome || ''}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            )}
             <div className="bg-white rounded-3xl shadow-xl shadow-gray-200/40 overflow-hidden border-none p-8">
               <h2 className="text-2xl font-bold mb-2">Responda às questões dissertativas</h2>
               <p className="text-gray-500">
