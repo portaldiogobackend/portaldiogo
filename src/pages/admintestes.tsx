@@ -124,6 +124,10 @@ export default function AdminTestes() {
   const [reportSearchTerm, setReportSearchTerm] = useState<string>('');
   const [reportSortConfig, setReportSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
   const [selectedTesteIds, setSelectedTesteIds] = useState<string[]>([]);
+  const [isMassAssignModalOpen, setIsMassAssignModalOpen] = useState(false);
+  const [massAssignSerieId, setMassAssignSerieId] = useState('');
+  const [massAssignAlunoIds, setMassAssignAlunoIds] = useState<string[]>([]);
+  const [massAssigning, setMassAssigning] = useState(false);
 
   // Modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -423,6 +427,10 @@ export default function AdminTestes() {
 
   const visibleTesteIds = useMemo(() => filteredTestesReport.map(teste => teste.id), [filteredTestesReport]);
   const allVisibleSelected = visibleTesteIds.length > 0 && visibleTesteIds.every(id => selectedTesteIds.includes(id));
+  const massAssignAlunos = useMemo(() => {
+    if (!massAssignSerieId) return alunos;
+    return alunos.filter(aluno => aluno.serie === massAssignSerieId);
+  }, [alunos, massAssignSerieId]);
 
   const toggleTesteSelection = (id: string) => {
     setSelectedTesteIds(prev => prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]);
@@ -436,6 +444,37 @@ export default function AdminTestes() {
     setSelectedTesteIds(prev => {
       const next = new Set(prev);
       visibleTesteIds.forEach(id => next.add(id));
+      return Array.from(next);
+    });
+  };
+
+  const openMassAssignModal = () => {
+    if (selectedTesteIds.length === 0) {
+      showToast('Selecione pelo menos um teste.', 'error');
+      return;
+    }
+    setIsMassAssignModalOpen(true);
+  };
+
+  const closeMassAssignModal = () => {
+    setIsMassAssignModalOpen(false);
+    setMassAssignSerieId('');
+    setMassAssignAlunoIds([]);
+  };
+
+  const toggleMassAssignAluno = (id: string) => {
+    setMassAssignAlunoIds(prev => prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]);
+  };
+
+  const toggleAllMassAssignAlunos = (items: SelectItem[]) => {
+    setMassAssignAlunoIds(prev => {
+      const itemIds = items.map(item => item.id);
+      const allSelected = items.length > 0 && items.every(item => prev.includes(item.id));
+      if (allSelected) {
+        return prev.filter(id => !itemIds.includes(id));
+      }
+      const next = new Set(prev);
+      itemIds.forEach(id => next.add(id));
       return Array.from(next);
     });
   };
@@ -905,6 +944,75 @@ export default function AdminTestes() {
     }
   };
 
+  const handleMassTestAssign = async () => {
+    if (selectedTesteIds.length === 0) {
+      showToast('Selecione pelo menos um teste.', 'error');
+      return;
+    }
+
+    const targetAlunoIds = massAssignAlunoIds.length > 0
+      ? massAssignAlunoIds
+      : massAssignSerieId
+        ? massAssignAlunos.map(aluno => aluno.id)
+        : [];
+
+    if (targetAlunoIds.length === 0) {
+      showToast('Selecione um aluno ou uma série com alunos.', 'error');
+      return;
+    }
+
+    setMassAssigning(true);
+    try {
+      const updates = selectedTesteIds
+        .map(testeId => {
+          const teste = testes.find(t => t.id === testeId);
+          if (!teste) return null;
+          const currentAlunos = Array.isArray(teste.idalunos) ? teste.idalunos : [];
+          const nextAlunos = Array.from(new Set([...currentAlunos, ...targetAlunoIds]));
+          if (nextAlunos.length === currentAlunos.length) return null;
+          return { testeId, nextAlunos };
+        })
+        .filter((update): update is { testeId: string; nextAlunos: string[] } => !!update);
+
+      if (updates.length === 0) {
+        showToast('Todos os testes já foram enviados.', 'error');
+        setMassAssigning(false);
+        return;
+      }
+
+      const updateResults = await Promise.all(
+        updates.map(update => supabase
+          .from('tbf_testes')
+          .update({ idalunos: update.nextAlunos })
+          .eq('id', update.testeId)
+          .select()
+          .single()
+        )
+      );
+
+      const errorResult = updateResults.find(result => result.error);
+      if (errorResult?.error) throw errorResult.error;
+
+      const updatedTestes = updateResults
+        .map(result => result.data)
+        .filter((item): item is Teste => !!item);
+
+      setTestes(prev => prev.map(teste => {
+        const updated = updatedTestes.find(item => item.id === teste.id);
+        return updated ? updated : teste;
+      }));
+
+      showToast(`Testes enviados para ${targetAlunoIds.length} aluno(s)!`, 'success');
+      closeMassAssignModal();
+      setSelectedTesteIds([]);
+    } catch (error) {
+      console.error('Erro ao enviar testes:', error);
+      showToast('Erro ao enviar testes.', 'error');
+    } finally {
+      setMassAssigning(false);
+    }
+  };
+
   const handleSave = async () => {
     // Validation
     if (formData.idmat.length === 0) {
@@ -1094,6 +1202,10 @@ export default function AdminTestes() {
               <Upload size={18} className="mr-2" />
               Envio Massivo
             </Button>
+            <Button onClick={openMassAssignModal} className="bg-white text-[#4318FF] border border-[#4318FF] hover:bg-gray-50">
+              <FileText size={18} className="mr-2" />
+              Enviar Testes
+            </Button>
             <Button onClick={openModal} className="bg-[#4318FF] hover:bg-[#3311CC]">
               <ClipboardList size={18} className="mr-2" />
               Cadastrar Testes
@@ -1114,9 +1226,10 @@ export default function AdminTestes() {
                 <h2 className="text-xl font-bold text-[#1B2559]">Relatório de Testes Cadastrados</h2>
                 <div className="flex items-center gap-4">
                   <span className="text-sm font-medium text-gray-500">{filteredTestesReport.length} de {testes.length} teste(s)</span>
-                  {selectedTesteIds.length > 0 && (
-                    <span className="text-sm font-medium text-gray-500">{selectedTesteIds.length} selecionado(s)</span>
-                  )}
+                  <span className="text-sm font-medium text-gray-500">{selectedTesteIds.length} selecionado(s)</span>
+                  <Button onClick={openMassAssignModal} className="bg-[#4318FF] hover:bg-[#3311CC]">
+                    Enviar testes
+                  </Button>
                 </div>
               </div>
 
@@ -1194,6 +1307,16 @@ export default function AdminTestes() {
                       <X size={16} />
                       Limpar
                     </button>
+                  )}
+                  {selectedTesteIds.length > 0 && (
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm font-medium text-gray-500">
+                        {selectedTesteIds.length} selecionado(s)
+                      </span>
+                      <Button onClick={openMassAssignModal} className="bg-[#4318FF] hover:bg-[#3311CC]">
+                        Enviar selecionados
+                      </Button>
+                    </div>
                   )}
                 </div>
               </div>
@@ -1630,6 +1753,66 @@ export default function AdminTestes() {
               isLoading={savingTema}
             >
               Salvar Tema
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={isMassAssignModalOpen}
+        onClose={closeMassAssignModal}
+        title="Enviar Testes Selecionados"
+        className="max-w-3xl max-h-[90vh] overflow-y-auto"
+      >
+        <div className="space-y-6">
+          <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
+            <p className="text-sm font-bold text-gray-500 mb-2">Selecionados</p>
+            <p className="text-sm text-gray-700">{selectedTesteIds.length} teste(s)</p>
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-gray-700">Série (opcional)</label>
+            <select
+              value={massAssignSerieId}
+              onChange={(e) => setMassAssignSerieId(e.target.value)}
+              className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-700 focus:ring-2 focus:ring-[#4318FF] outline-none"
+            >
+              <option value="">Selecione</option>
+              {series.map(serie => (
+                <option key={serie.id} value={serie.id}>{serie.serie}</option>
+              ))}
+            </select>
+            {massAssignSerieId && massAssignAlunos.length === 0 && (
+              <p className="text-xs text-red-500">Nenhum aluno encontrado para a série.</p>
+            )}
+          </div>
+          <MultiSelect 
+            label="Alunos (opcional)" 
+            items={massAssignAlunos} 
+            selectedIds={massAssignAlunoIds} 
+            onToggle={toggleMassAssignAluno}
+            onToggleAll={toggleAllMassAssignAlunos}
+            subtitle={massAssignSerieId && (
+              <span className="text-xs text-gray-400">(filtrado por série)</span>
+            )}
+            renderLabel={(aluno) => {
+              const alunoSerie = series.find(s => s.id === aluno.serie)?.serie;
+              
+              return (
+                <span className="flex items-center gap-2">
+                  <span className="font-medium">{capitalizeWords(aluno.nome || '')} {capitalizeWords(aluno.sobrenome || '')}</span>
+                  {alunoSerie && (
+                    <span className="text-xs text-gray-500">- {alunoSerie}</span>
+                  )}
+                </span>
+              );
+            }}
+          />
+          <div className="flex gap-4 pt-4 border-t border-gray-100">
+            <Button variant="ghost" onClick={closeMassAssignModal} className="flex-1">
+              Cancelar
+            </Button>
+            <Button onClick={handleMassTestAssign} className="flex-1 bg-[#4318FF] hover:bg-[#3311CC]" isLoading={massAssigning}>
+              Enviar Testes
             </Button>
           </div>
         </div>

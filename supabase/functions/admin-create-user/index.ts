@@ -20,6 +20,8 @@ serve(async (req) => {
     const senha = typeof body?.senha === "string" ? body.senha.trim() : "";
     const role = typeof body?.role === "string" ? body.role : "aluno";
     const signature = typeof body?.signature === "string" ? body.signature : "ativo";
+    const emailpai = typeof body?.emailpai === "string" ? body.emailpai.trim().toLowerCase() : "";
+    const emailaluno = typeof body?.emailaluno === "string" ? body.emailaluno.trim().toLowerCase() : "";
 
     if (!nome || !telefone) {
       return new Response(JSON.stringify({ error: "Nome e telefone são obrigatórios." }), {
@@ -42,17 +44,6 @@ serve(async (req) => {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
-    }
-
-    if (email && senha) {
-      const resendApiKey = Deno.env.get("RESEND_API_KEY");
-      const resendFrom = Deno.env.get("RESEND_FROM");
-      if (!resendApiKey || !resendFrom) {
-        return new Response(JSON.stringify({ error: "Configuração de e-mail ausente." }), {
-          status: 500,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
     }
 
     const supabase = createClient(supabaseUrl, serviceRoleKey, {
@@ -114,8 +105,8 @@ serve(async (req) => {
         telefone,
         signature,
         role,
-        emailpai: "",
-        emailaluno: "",
+        emailpai,
+        emailaluno,
       })
       .select("id, nome, sobrenome, email, telefone, signature, role, created_at")
       .single();
@@ -125,40 +116,6 @@ serve(async (req) => {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
-    }
-
-    if (email && senha) {
-      const resendApiKey = Deno.env.get("RESEND_API_KEY") || "";
-      const resendFrom = Deno.env.get("RESEND_FROM") || "";
-      const html = `
-        <div>
-          <p>Olá ${nome},</p>
-          <p>Seu acesso ao portal foi criado.</p>
-          <p><strong>Login:</strong> ${email}</p>
-          <p><strong>Senha:</strong> ${senha}</p>
-        </div>
-      `;
-
-      const emailResponse = await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${resendApiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          from: resendFrom,
-          to: [email],
-          subject: "Acesso ao Portal",
-          html,
-        }),
-      });
-
-      if (!emailResponse.ok) {
-        return new Response(JSON.stringify({ error: "Erro ao enviar e-mail de acesso." }), {
-          status: 500,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
     }
 
     return new Response(JSON.stringify({ user: createdProfile }), {

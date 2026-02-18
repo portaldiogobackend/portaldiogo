@@ -1,4 +1,4 @@
-import React, { useCallback, useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect, useMemo } from 'react';
 import { Users, ChevronLeft, Edit, Trash2, Plus, Mail, Shield, Signature, Search, ChevronUp, ChevronDown, Filter, X, Menu } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Sidebar } from '../components/layout/Sidebar';
@@ -15,6 +15,8 @@ interface UserProfile {
   sobrenome: string;
   email: string;
   telefone?: string | null;
+  emailpai?: string | null;
+  emailaluno?: string | null;
   signature: string;
   role: string;
   created_at: string;
@@ -57,14 +59,17 @@ const Usuarios: React.FC = () => {
     signature: '',
     role: '',
     materias: [] as string[],
-    serie: ''
+    serie: '',
+    emailaluno: ''
   });
   const [createForm, setCreateForm] = useState({
     nome: '',
     sobrenome: '',
     telefone: '',
     email: '',
-    senha: ''
+    senha: '',
+    role: 'aluno',
+    linkedAlunoIds: [] as string[]
   });
   const [isSaving, setIsSaving] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
@@ -208,7 +213,8 @@ const Usuarios: React.FC = () => {
       signature: user.signature || 'inativo',
       role: user.role || 'aluno',
       materias: user.materias || [],
-      serie: user.serie || ''
+      serie: user.serie || '',
+      emailaluno: user.emailaluno || ''
     });
     setShowEditModal(true);
   };
@@ -226,7 +232,8 @@ const Usuarios: React.FC = () => {
           signature: editForm.signature,
           role: editForm.role,
           materias: editForm.role === 'aluno' ? editForm.materias : [], // Only save materias if role is aluno
-          serie: editForm.serie
+          serie: editForm.serie,
+          emailaluno: editForm.role === 'pai' ? editForm.emailaluno : ''
         })
         .eq('id', userToEdit.id);
 
@@ -261,7 +268,9 @@ const Usuarios: React.FC = () => {
       sobrenome: '',
       telefone: '',
       email: '',
-      senha: ''
+      senha: '',
+      role: 'aluno',
+      linkedAlunoIds: []
     });
     setCreateError(null);
     setShowCreateModal(true);
@@ -274,6 +283,11 @@ const Usuarios: React.FC = () => {
     const email = createForm.email.trim().toLowerCase();
     const senha = createForm.senha.trim();
     const telefoneNumeros = telefone.replace(/\D/g, '');
+    const role = createForm.role;
+    const linkedAlunoEmails = alunosForLink
+      .filter(aluno => createForm.linkedAlunoIds.includes(aluno.id))
+      .map(aluno => aluno.email)
+      .filter(Boolean);
 
     if (!nome || !telefone) {
       setCreateError('Nome e telefone são obrigatórios.');
@@ -298,6 +312,16 @@ const Usuarios: React.FC = () => {
       }
     }
 
+    if (role === 'pai' && !email) {
+      setCreateError('Para pai/mãe o e-mail é obrigatório.');
+      return;
+    }
+
+    if (role === 'pai' && linkedAlunoEmails.length === 0) {
+      setCreateError('Selecione pelo menos um aluno para vincular.');
+      return;
+    }
+
     setIsCreating(true);
     setCreateError(null);
 
@@ -308,16 +332,32 @@ const Usuarios: React.FC = () => {
         telefone,
         email,
         senha,
-        role: 'aluno',
-        signature: 'ativo'
+        role,
+        signature: 'ativo',
+        emailaluno: role === 'pai' ? linkedAlunoEmails.join(', ') : '',
+        emailpai: ''
       };
 
       const { data, error } = await supabase.functions.invoke('admin-create-user', {
         body: payload
       });
 
-      if (error) throw error;
-      if (!data?.user) throw new Error('Erro ao criar usuário.');
+      if (error) {
+        const contextBody = (error as { context?: { body?: string } })?.context?.body;
+        if (contextBody) {
+          try {
+            const parsed = JSON.parse(contextBody) as { error?: string };
+            if (parsed?.error) throw new Error(parsed.error);
+          } catch {
+            throw new Error(error.message);
+          }
+        }
+        throw new Error(error.message);
+      }
+      if (!data?.user) {
+        const dataError = (data as { error?: string } | null)?.error;
+        throw new Error(dataError || 'Erro ao criar usuário.');
+      }
 
       await logAudit('create_user', data.user.id, {
         email: data.user.email,
@@ -330,13 +370,16 @@ const Usuarios: React.FC = () => {
         sobrenome: '',
         telefone: '',
         email: '',
-        senha: ''
+        senha: '',
+        role: 'aluno',
+        linkedAlunoIds: []
       });
 
       fetchAllUsers();
     } catch (error) {
       console.error('Error creating user:', error);
-      setCreateError('Erro ao criar usuário. Verifique as permissões e o serviço de e-mail.');
+      const message = error instanceof Error ? error.message : 'Erro ao criar usuário. Verifique as permissões.';
+      setCreateError(message);
     } finally {
       setIsCreating(false);
     }
@@ -352,6 +395,38 @@ const Usuarios: React.FC = () => {
         return { ...prev, materias: [...currentMaterias, materiaId] };
       }
     });
+  };
+
+  const alunosForLink = useMemo(() => {
+    return users.filter(user => user.role === 'aluno' && user.email);
+  }, [users]);
+
+  const toggleCreateAlunoLink = (id: string) => {
+    setCreateForm(prev => {
+      const exists = prev.linkedAlunoIds.includes(id);
+      return {
+        ...prev,
+        linkedAlunoIds: exists ? prev.linkedAlunoIds.filter(item => item !== id) : [...prev.linkedAlunoIds, id]
+      };
+    });
+  };
+
+  const toggleAllCreateAlunoLinks = () => {
+    setCreateForm(prev => {
+      const allIds = alunosForLink.map(aluno => aluno.id);
+      const allSelected = allIds.length > 0 && allIds.every(id => prev.linkedAlunoIds.includes(id));
+      return {
+        ...prev,
+        linkedAlunoIds: allSelected ? [] : allIds
+      };
+    });
+  };
+
+  const roleLabel = (role: string) => {
+    if (role === 'pai') return 'Pai/Mãe';
+    if (role === 'aluno') return 'Aluno';
+    if (role === 'admin') return 'Admin';
+    return role || 'Usuário';
   };
 
   const confirmDelete = async () => {
@@ -624,7 +699,7 @@ const Usuarios: React.FC = () => {
                 className="w-full px-4 py-2 bg-[#F4F7FE] border-none rounded-xl text-[#2B3674] focus:ring-2 focus:ring-[#0061FF]/20 outline-none appearance-none"
               >
                 <option value="admin">Admin</option>
-                <option value="pai">Pai</option>
+                <option value="pai">Pai/Mãe</option>
                 <option value="aluno">Aluno</option>
               </select>
             </div>
@@ -741,6 +816,67 @@ const Usuarios: React.FC = () => {
           </div>
 
           <div className="space-y-2">
+            <label className="text-sm font-bold text-[#1B2559]">Cargo</label>
+            <select
+              value={createForm.role}
+              onChange={(e) => {
+                const role = e.target.value;
+                setCreateForm(prev => ({
+                  ...prev,
+                  role,
+                  linkedAlunoIds: role === 'pai' ? prev.linkedAlunoIds : []
+                }));
+              }}
+              className="w-full px-4 py-2 bg-[#F4F7FE] border-none rounded-xl text-[#2B3674] focus:ring-2 focus:ring-[#0061FF]/20 outline-none appearance-none"
+            >
+              <option value="admin">Admin</option>
+              <option value="pai">Pai/Mãe</option>
+              <option value="aluno">Aluno</option>
+            </select>
+          </div>
+
+          {createForm.role === 'pai' && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-bold text-[#1B2559]">Alunos vinculados *</label>
+                {alunosForLink.length > 0 && (
+                  <label className="flex items-center gap-2 text-xs text-[#7A8398] cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={alunosForLink.length > 0 && alunosForLink.every(aluno => createForm.linkedAlunoIds.includes(aluno.id))}
+                      onChange={toggleAllCreateAlunoLinks}
+                      className="w-4 h-4 rounded border-gray-300 text-[#0061FF] focus:ring-[#0061FF]"
+                    />
+                    Selecionar todos
+                  </label>
+                )}
+              </div>
+              <div className="bg-[#F4F7FE] p-4 rounded-xl max-h-48 overflow-y-auto">
+                {alunosForLink.length === 0 ? (
+                  <p className="text-sm text-[#A3AED0]">Nenhum aluno com e-mail cadastrado.</p>
+                ) : (
+                  <div className="grid grid-cols-1 gap-2">
+                    {alunosForLink.map((aluno) => (
+                      <label key={aluno.id} className="flex items-center gap-2 cursor-pointer hover:bg-white/50 p-2 rounded-lg transition-colors">
+                        <input
+                          type="checkbox"
+                          checked={createForm.linkedAlunoIds.includes(aluno.id)}
+                          onChange={() => toggleCreateAlunoLink(aluno.id)}
+                          className="w-4 h-4 rounded border-gray-300 text-[#0061FF] focus:ring-[#0061FF]"
+                        />
+                        <span className="text-sm font-medium text-[#2B3674]">
+                          {capitalizeWords(`${aluno.nome} ${aluno.sobrenome || ''}`.trim())}
+                        </span>
+                        <span className="text-xs text-[#A3AED0]">{aluno.email}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-2">
             <label className="text-sm font-bold text-[#1B2559]">Senha de Acesso</label>
             <input
               type="password"
@@ -749,7 +885,7 @@ const Usuarios: React.FC = () => {
               className="w-full px-4 py-2 bg-[#F4F7FE] border-none rounded-xl text-[#2B3674] focus:ring-2 focus:ring-[#0061FF]/20 outline-none"
               placeholder="Opcional"
             />
-            <p className="text-xs text-[#A3AED0]">Ao informar senha, o e-mail é obrigatório e será enviado com login e senha.</p>
+            <p className="text-xs text-[#A3AED0]">Ao informar senha, o e-mail é obrigatório para criar o acesso.</p>
           </div>
 
           <div className="flex justify-end gap-3 mt-6">
@@ -839,7 +975,7 @@ const Usuarios: React.FC = () => {
                     >
                       <option value="all">Todos os Cargos</option>
                       <option value="admin">Admin</option>
-                      <option value="pai">Pai</option>
+                      <option value="pai">Pai/Mãe</option>
                       <option value="aluno">Aluno</option>
                     </select>
                   </div>
@@ -1029,7 +1165,7 @@ const Usuarios: React.FC = () => {
                           <td className="px-8 py-5">
                             <div className="flex items-center gap-2 text-[#2B3674] font-medium capitalize">
                               <Shield size={16} className="text-[#A3AED0]" />
-                              {user.role || 'Usuário'}
+                              {roleLabel(user.role)}
                             </div>
                           </td>
                           <td className="px-8 py-5">
