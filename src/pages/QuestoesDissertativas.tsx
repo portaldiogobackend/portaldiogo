@@ -46,6 +46,7 @@ interface Aluno {
   id: string;
   nome: string;
   sobrenome?: string | null;
+  serie?: string | null;
   idserie?: string | null;
 }
 
@@ -278,10 +279,21 @@ export default function QuestoesDissertativas() {
 
       const { data: alunosData } = await supabase
         .from('tbf_controle_user')
-        .select('id, nome, sobrenome, idserie')
+        .select('id, nome, sobrenome, serie')
         .eq('role', 'aluno')
         .order('nome');
-      setAlunos((alunosData as Aluno[]) || []);
+      const seriesList = (seriesData as Serie[]) || [];
+      const alunosList = (alunosData as Aluno[]) || [];
+      const alunosWithSerie = alunosList.map((aluno) => {
+        const directMatch = seriesList.find(serie => serie.id === aluno.serie);
+        if (directMatch) {
+          return { ...aluno, idserie: directMatch.id };
+        }
+        const normalized = (aluno.serie || '').trim().toLowerCase();
+        const byName = seriesList.find(serie => serie.serie.trim().toLowerCase() === normalized);
+        return { ...aluno, idserie: byName?.id || null };
+      });
+      setAlunos(alunosWithSerie);
 
       const { data: questoesData } = await supabase
         .from('tbf_questoes_dissertativas')
