@@ -333,8 +333,13 @@ export default function QuestoesDissertativas() {
   const allVisibleSelected = visibleQuestaoIds.length > 0 && visibleQuestaoIds.every(id => selectedQuestaoIds.includes(id));
   const massAssignAlunos = useMemo(() => {
     if (!massAssignSerieId) return alunos;
-    return alunos.filter(aluno => aluno.idserie === massAssignSerieId);
-  }, [alunos, massAssignSerieId]);
+    const filtered = alunos.filter(aluno => aluno.idserie === massAssignSerieId);
+    if (massAssignAlunoId && !filtered.some(aluno => aluno.id === massAssignAlunoId)) {
+      const selected = alunos.find(aluno => aluno.id === massAssignAlunoId);
+      if (selected) return [selected, ...filtered];
+    }
+    return filtered;
+  }, [alunos, massAssignAlunoId, massAssignSerieId]);
 
   const clearFilters = () => {
     setSearchTerm('');
@@ -1568,9 +1573,7 @@ export default function QuestoesDissertativas() {
             <select
               value={massAssignSerieId}
               onChange={(e) => {
-                const value = e.target.value;
-                setMassAssignSerieId(value);
-                if (value) setMassAssignAlunoId('');
+                setMassAssignSerieId(e.target.value);
               }}
               className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-700 focus:ring-2 focus:ring-[#4318FF] outline-none"
             >
@@ -1585,9 +1588,7 @@ export default function QuestoesDissertativas() {
             <select
               value={massAssignAlunoId}
               onChange={(e) => {
-                const value = e.target.value;
-                setMassAssignAlunoId(value);
-                if (value) setMassAssignSerieId('');
+                setMassAssignAlunoId(e.target.value);
               }}
               className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-700 focus:ring-2 focus:ring-[#4318FF] outline-none"
             >

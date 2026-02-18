@@ -640,14 +640,6 @@ export default function AdminTestes() {
         .map(line => line.trim())
         .filter(line => line !== '' && !line.startsWith('#') && !line.startsWith('//'));
 
-      if (lines.length !== 10) {
-        const errors = [`O arquivo deve conter exatamente 10 questões. Encontradas: ${lines.length}.`];
-        setImporting(false);
-        setImportLog({ success: 0, errors });
-        showToast('Quantidade de questões inválida. Verifique o arquivo.', 'error');
-        return;
-      }
-
       let successCount = 0;
       const errors: string[] = [];
       const questionsSeen = new Set<string>();
