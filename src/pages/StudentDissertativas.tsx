@@ -1,6 +1,7 @@
 import { Button } from '@/components/ui/Button';
 import { Spinner } from '@/components/ui/Spinner';
 import { Toast, type ToastType } from '@/components/ui/Toast';
+import { listDissertativaQuestaoIdsByAluno } from '@/lib/dissertativasDestinos';
 import { supabase } from '@/lib/supabase';
 import { capitalizeWords } from '@/lib/utils';
 import { format } from 'date-fns';
@@ -51,10 +52,6 @@ interface EnvioDissertativa {
   nota?: number | null;
   corrigida: boolean | null;
   corrigido_em: string | null;
-}
-
-interface DestinoDissertativa {
-  questao_id: string;
 }
 
 interface LinkedAluno {
@@ -224,12 +221,7 @@ export const StudentDissertativas: React.FC = () => {
       setSeries((seriesData as Serie[]) || []);
       setTemas((temasData as Tema[]) || []);
 
-      const { data: destinosData } = await supabase
-        .from('tbf_questoes_dissertativas_destinos')
-        .select('questao_id')
-        .eq('aluno_id', targetAlunoId);
-
-      const questaoIds = (destinosData as DestinoDissertativa[] | null)?.map(d => d.questao_id) || [];
+      const { questaoIds } = await listDissertativaQuestaoIdsByAluno(targetAlunoId);
 
       const generalQuery = supabase.from('tbf_questoes_dissertativas').select('*').order('created_at', { ascending: false });
       if (targetSerie) generalQuery.eq('idserie', targetSerie);

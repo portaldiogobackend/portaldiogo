@@ -3,6 +3,12 @@ import { DeleteConfirmModal } from '@/components/ui/DeleteConfirmModal';
 import { Modal } from '@/components/ui/Modal';
 import { Spinner } from '@/components/ui/Spinner';
 import { Toast, type ToastType } from '@/components/ui/Toast';
+import {
+  type DestinoInsertRow,
+  findDissertativaDestino,
+  insertDissertativaDestinos,
+  listDissertativaDestinoPairs
+} from '@/lib/dissertativasDestinos';
 import { supabase } from '@/lib/supabase';
 import { capitalizeWords } from '@/lib/utils';
 import { format } from 'date-fns';
@@ -73,14 +79,6 @@ interface EnvioDissertativa {
   nota?: number | null;
   corrigida: boolean | null;
   corrigido_em: string | null;
-}
-
-interface DestinoDissertativa {
-  id: string;
-  questao_id: string;
-  aluno_id: string;
-  professor_id: string;
-  enviado_em: string;
 }
 
 type QuillEditor = ReturnType<ReactQuill['getEditor']>;
@@ -236,6 +234,27 @@ export default function QuestoesDissertativas() {
   const showToast = useCallback((message: string, type: ToastType) => {
     setToast({ message, type });
   }, []);
+
+  const getErrorMessage = (error: unknown, fallback: string) => {
+    if (typeof error === 'string') return error;
+    if (error && typeof error === 'object' && 'message' in error) {
+      const message = (error as { message?: unknown }).message;
+      if (typeof message === 'string' && message.trim()) return message;
+    }
+    return fallback;
+  };
+
+  const formatErrorMessage = (error: unknown, fallback: string) => {
+    const message = getErrorMessage(error, fallback);
+    if (!error || typeof error !== 'object') return message;
+    const details = 'details' in error ? (error as { details?: unknown }).details : undefined;
+    const hint = 'hint' in error ? (error as { hint?: unknown }).hint : undefined;
+    const code = 'code' in error ? (error as { code?: unknown }).code : undefined;
+    const status = 'status' in error ? (error as { status?: unknown }).status : undefined;
+    const extra = [details, hint, code, status].filter((item) => typeof item === 'string' || typeof item === 'number');
+    if (extra.length === 0) return message;
+    return `${message} (${extra.join(' | ')})`;
+  };
 
   const fetchInitialData = useCallback(async () => {
     setLoading(true);
@@ -613,35 +632,33 @@ export default function QuestoesDissertativas() {
     }
     setAssigning(true);
     try {
-      const { data: existing } = await supabase
-        .from('tbf_questoes_dissertativas_destinos')
-        .select('id')
-        .eq('questao_id', currentAssignQuestao.id)
-        .eq('aluno_id', assignAlunoId)
-        .maybeSingle();
-      if (existing) {
-        showToast('Questão já enviada para este aluno.', 'error');
-        setAssigning(false);
-        return;
+      try {
+        const { exists: existing, error: existingError } = await findDissertativaDestino(currentAssignQuestao.id, assignAlunoId);
+        if (existingError) throw existingError;
+        if (existing) {
+          showToast('Questão já enviada para este aluno.', 'error');
+          setAssigning(false);
+          return;
+        }
+      } catch (error) {
+        console.error('Erro ao validar envio:', error);
       }
 
-      const payload: Partial<DestinoDissertativa> = {
+      const payload: DestinoInsertRow = {
         questao_id: currentAssignQuestao.id,
         aluno_id: assignAlunoId,
         professor_id: currentUserId,
         enviado_em: new Date().toISOString()
       };
 
-      const { error } = await supabase
-        .from('tbf_questoes_dissertativas_destinos')
-        .insert([payload]);
+      const { error } = await insertDissertativaDestinos([payload]);
       if (error) throw error;
 
       showToast('Questão enviada ao aluno!', 'success');
       closeAssign();
     } catch (error) {
       console.error('Erro ao enviar questão:', error);
-      showToast('Erro ao enviar questão.', 'error');
+      showToast(formatErrorMessage(error, 'Erro ao enviar questão.'), 'error');
     } finally {
       setAssigning(false);
     }
@@ -670,14 +687,15 @@ export default function QuestoesDissertativas() {
 
     setMassAssigning(true);
     try {
-      const { data: existing } = await supabase
-        .from('tbf_questoes_dissertativas_destinos')
-        .select('questao_id, aluno_id')
-        .in('questao_id', selectedQuestaoIds)
-        .in('aluno_id', targetAlunoIds);
-
-      const existingPairs = new Set((existing || []).map(item => `${item.questao_id}-${item.aluno_id}`));
-      const payload: Partial<DestinoDissertativa>[] = [];
+      let existingPairs = new Set<string>();
+      try {
+        const { pairs, error: existingError } = await listDissertativaDestinoPairs(selectedQuestaoIds, targetAlunoIds);
+        if (existingError) throw existingError;
+        existingPairs = pairs;
+      } catch (error) {
+        console.error('Erro ao validar envios em lote:', error);
+      }
+      const payload: DestinoInsertRow[] = [];
       const timestamp = new Date().toISOString();
 
       selectedQuestaoIds.forEach(questaoId => {
@@ -700,9 +718,7 @@ export default function QuestoesDissertativas() {
         return;
       }
 
-      const { error } = await supabase
-        .from('tbf_questoes_dissertativas_destinos')
-        .insert(payload);
+      const { error } = await insertDissertativaDestinos(payload);
       if (error) throw error;
 
       showToast(`Questões enviadas para ${targetAlunoIds.length} aluno(s)!`, 'success');
@@ -710,7 +726,7 @@ export default function QuestoesDissertativas() {
       setSelectedQuestaoIds([]);
     } catch (error) {
       console.error('Erro ao enviar questões:', error);
-      showToast('Erro ao enviar questões.', 'error');
+      showToast(formatErrorMessage(error, 'Erro ao enviar questões.'), 'error');
     } finally {
       setMassAssigning(false);
     }
