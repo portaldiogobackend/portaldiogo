@@ -206,8 +206,7 @@ export default function QuestoesDissertativas() {
   const [assignAlunoId, setAssignAlunoId] = useState('');
   const [selectedQuestaoIds, setSelectedQuestaoIds] = useState<string[]>([]);
   const [isMassAssignModalOpen, setIsMassAssignModalOpen] = useState(false);
-  const [massAssignAlunoId, setMassAssignAlunoId] = useState('');
-  const [massAssignSerieId, setMassAssignSerieId] = useState('');
+  const [massAssignAlunoIds, setMassAssignAlunoIds] = useState<string[]>([]);
   const [massAssigning, setMassAssigning] = useState(false);
   const enunciadoRef = useRef<ReactQuill | null>(null);
   const respostaRef = useRef<ReactQuill | null>(null);
@@ -276,7 +275,7 @@ export default function QuestoesDissertativas() {
         setUserName(capitalizeWords(userData.nome.split(' ')[0]));
       }
       if (userData?.role === 'aluno') {
-        navigate('/aluno/questoes-dissertativas', { replace: true });
+        navigate('/aluno/envio-dissertativas', { replace: true });
         return;
       }
 
@@ -327,7 +326,7 @@ export default function QuestoesDissertativas() {
       setEnvios((enviosData as EnvioDissertativa[]) || []);
     } catch (error) {
       console.error('Erro ao carregar dados:', error);
-      showToast('Erro ao carregar dados.', 'error');
+      showToast(formatErrorMessage(error, 'Erro ao carregar dados.'), 'error');
     } finally {
       setLoading(false);
     }
@@ -350,15 +349,6 @@ export default function QuestoesDissertativas() {
 
   const visibleQuestaoIds = useMemo(() => filteredQuestoes.map(questao => questao.id), [filteredQuestoes]);
   const allVisibleSelected = visibleQuestaoIds.length > 0 && visibleQuestaoIds.every(id => selectedQuestaoIds.includes(id));
-  const massAssignAlunos = useMemo(() => {
-    if (!massAssignSerieId) return alunos;
-    const filtered = alunos.filter(aluno => aluno.idserie === massAssignSerieId);
-    if (massAssignAlunoId && !filtered.some(aluno => aluno.id === massAssignAlunoId)) {
-      const selected = alunos.find(aluno => aluno.id === massAssignAlunoId);
-      if (selected) return [selected, ...filtered];
-    }
-    return filtered;
-  }, [alunos, massAssignAlunoId, massAssignSerieId]);
 
   const clearFilters = () => {
     setSearchTerm('');
@@ -428,13 +418,13 @@ export default function QuestoesDissertativas() {
       showToast('Selecione pelo menos uma questão.', 'error');
       return;
     }
+    setMassAssignAlunoIds([]);
     setIsMassAssignModalOpen(true);
   };
 
   const closeMassAssign = () => {
     setIsMassAssignModalOpen(false);
-    setMassAssignAlunoId('');
-    setMassAssignSerieId('');
+    setMassAssignAlunoIds([]);
   };
 
   const toggleQuestaoSelection = (id: string) => {
@@ -491,7 +481,7 @@ export default function QuestoesDissertativas() {
       showToast('Disciplina criada com sucesso!', 'success');
     } catch (error) {
       console.error('Erro ao criar disciplina:', error);
-      showToast('Erro ao criar disciplina.', 'error');
+      showToast(formatErrorMessage(error, 'Erro ao criar disciplina.'), 'error');
     } finally {
       setCreatingMateria(false);
     }
@@ -533,7 +523,7 @@ export default function QuestoesDissertativas() {
       showToast('Conteúdo criado com sucesso!', 'success');
     } catch (error) {
       console.error('Erro ao criar conteúdo:', error);
-      showToast('Erro ao criar conteúdo.', 'error');
+      showToast(formatErrorMessage(error, 'Erro ao criar conteúdo.'), 'error');
     } finally {
       setCreatingTema(false);
     }
@@ -616,7 +606,7 @@ export default function QuestoesDissertativas() {
       closeDelete();
     } catch (error) {
       console.error('Erro ao excluir questão:', error);
-      showToast('Erro ao excluir questão.', 'error');
+      showToast(formatErrorMessage(error, 'Erro ao excluir questão.'), 'error');
     }
   };
 
@@ -642,6 +632,7 @@ export default function QuestoesDissertativas() {
         }
       } catch (error) {
         console.error('Erro ao validar envio:', error);
+        showToast(formatErrorMessage(error, 'Erro ao validar envio existente.'), 'error');
       }
 
       const payload: DestinoInsertRow = {
@@ -674,14 +665,10 @@ export default function QuestoesDissertativas() {
       return;
     }
 
-    const targetAlunoIds = massAssignAlunoId
-      ? [massAssignAlunoId]
-      : massAssignSerieId
-        ? alunos.filter(aluno => aluno.idserie === massAssignSerieId).map(aluno => aluno.id)
-        : [];
+    const targetAlunoIds = Array.from(new Set(massAssignAlunoIds));
 
     if (targetAlunoIds.length === 0) {
-      showToast('Selecione um aluno ou uma série com alunos.', 'error');
+      showToast('Selecione um ou mais alunos.', 'error');
       return;
     }
 
@@ -694,6 +681,7 @@ export default function QuestoesDissertativas() {
         existingPairs = pairs;
       } catch (error) {
         console.error('Erro ao validar envios em lote:', error);
+        showToast(formatErrorMessage(error, 'Erro ao validar envios existentes.'), 'error');
       }
       const payload: DestinoInsertRow[] = [];
       const timestamp = new Date().toISOString();
@@ -939,7 +927,7 @@ export default function QuestoesDissertativas() {
         }
       }
       console.error('Erro ao salvar correção:', error);
-      showToast('Erro ao salvar correção.', 'error');
+      showToast(formatErrorMessage(error, 'Erro ao salvar correção.'), 'error');
     }
   };
 
@@ -986,7 +974,7 @@ export default function QuestoesDissertativas() {
           insertImageIntoQuill(quill, publicUrl.publicUrl);
         } catch (uploadError) {
           console.error('Erro ao enviar imagem:', uploadError);
-          showToast('Erro ao enviar imagem.', 'error');
+          showToast(formatErrorMessage(uploadError, 'Erro ao enviar imagem.'), 'error');
         }
       };
       input.click();
@@ -1576,53 +1564,40 @@ export default function QuestoesDissertativas() {
       <Modal
         isOpen={isMassAssignModalOpen}
         onClose={closeMassAssign}
-        title="Enviar Questões Selecionadas"
+        title="Enviar Para Alunos Selecionados"
         className="max-w-3xl max-h-[90vh] overflow-y-auto"
       >
         <div className="space-y-6">
           <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
-            <p className="text-sm font-bold text-gray-500 mb-2">Selecionadas</p>
+            <p className="text-sm font-bold text-gray-500 mb-2">Questões Selecionadas</p>
             <p className="text-sm text-gray-700">{selectedQuestaoIds.length} questão(ões)</p>
           </div>
+          
           <div className="space-y-2">
-            <label className="text-sm font-medium text-gray-700">Série (opcional)</label>
+            <label className="text-sm font-medium text-gray-700">Alunos (um ou mais)</label>
             <select
-              value={massAssignSerieId}
+              multiple
+              value={massAssignAlunoIds}
               onChange={(e) => {
-                setMassAssignSerieId(e.target.value);
+                const ids = Array.from(e.target.selectedOptions).map((option) => option.value);
+                setMassAssignAlunoIds(ids);
               }}
-              className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-700 focus:ring-2 focus:ring-[#4318FF] outline-none"
+              className="w-full min-h-52 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-700 focus:ring-2 focus:ring-[#4318FF] outline-none"
             >
-              <option value="">Selecione</option>
-              {series.map(ser => (
-                <option key={ser.id} value={ser.id}>{ser.serie}</option>
-              ))}
-            </select>
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-gray-700">Aluno (opcional)</label>
-            <select
-              value={massAssignAlunoId}
-              onChange={(e) => {
-                setMassAssignAlunoId(e.target.value);
-              }}
-              className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-700 focus:ring-2 focus:ring-[#4318FF] outline-none"
-            >
-              <option value="">Selecione</option>
-              {massAssignAlunos.map(aluno => (
+              {alunos.map(aluno => (
                 <option key={aluno.id} value={aluno.id}>{capitalizeWords(`${aluno.nome} ${aluno.sobrenome || ''}`.trim())}</option>
               ))}
             </select>
-            {massAssignSerieId && massAssignAlunos.length === 0 && (
-              <p className="text-xs text-red-500">Nenhum aluno encontrado para a série.</p>
-            )}
+            <p className="text-xs text-gray-500">
+              Segure `Ctrl` (Windows) ou `Cmd` (Mac) para selecionar múltiplos alunos.
+            </p>
           </div>
           <div className="flex gap-4 pt-4 border-t border-gray-100">
             <Button variant="ghost" onClick={closeMassAssign} className="flex-1">
               Cancelar
             </Button>
             <Button onClick={handleMassAssign} className="flex-1 bg-[#4318FF] hover:bg-[#3311CC]" isLoading={massAssigning}>
-              Enviar Questões
+              Enviar Para Alunos Selecionados
             </Button>
           </div>
         </div>

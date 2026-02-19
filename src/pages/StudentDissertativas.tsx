@@ -44,6 +44,7 @@ interface EnvioDissertativa {
   id: string;
   questao_id: string;
   aluno_id: string;
+  professor_id?: string | null;
   resposta_texto: string | null;
   resposta_imagem_url: string | null;
   tipo_resposta: 'texto' | 'imagem';
@@ -89,6 +90,21 @@ const stripHtml = (html: string) => {
   if (!html) return '';
   const doc = new DOMParser().parseFromString(html, 'text/html');
   return doc.body.textContent || '';
+};
+
+const getErrorDetails = (error: unknown) => {
+  if (!error) return '';
+  if (typeof error === 'string') return error;
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'object') {
+    const err = error as { message?: unknown; details?: unknown; hint?: unknown; code?: unknown };
+    const parts = [err.message, err.details, err.hint, err.code]
+      .filter((part) => typeof part === 'string' || typeof part === 'number')
+      .map((part) => String(part).trim())
+      .filter(Boolean);
+    return parts.join(' | ');
+  }
+  return '';
 };
 
 const MathContent = ({ html }: { html: string }) => {
@@ -304,6 +320,8 @@ export const StudentDissertativas: React.FC = () => {
     }
   };
 
+  const sanitizeFileName = (fileName: string) => fileName.replace(/[^\w.\-]/g, '_');
+
   const handleSubmit = async (questao: QuestaoDissertativa) => {
     if (isParent) {
       showToast('Acesso somente leitura para responsáveis.', 'error');
@@ -349,6 +367,7 @@ export const StudentDissertativas: React.FC = () => {
       let payload: Partial<EnvioDissertativa> = {
         questao_id: questao.id,
         aluno_id: currentUserId,
+        professor_id: questao.professor_id,
         tipo_resposta: hasTexto ? 'texto' : 'imagem',
         enviado_em: new Date().toISOString()
       };
@@ -359,13 +378,31 @@ export const StudentDissertativas: React.FC = () => {
         payload = { ...payload, resposta_imagem_url: imagemUrl };
       } else if (imagem) {
         const bucket = 'dissertativas-respostas';
-        const filePath = `${currentUserId}/${questao.id}/${Date.now()}-${imagem.name}`;
-        const { error: uploadError } = await supabase.storage.from(bucket).upload(filePath, imagem, {
-          upsert: false,
-          contentType: imagem.type
-        });
-        if (uploadError) throw uploadError;
-        const { data: publicUrl } = supabase.storage.from(bucket).getPublicUrl(filePath);
+        const safeName = sanitizeFileName(imagem.name);
+        const uploadCandidates = [
+          `envios/${currentUserId}/${questao.id}/${Date.now()}-${safeName}`,
+          `${currentUserId}/${questao.id}/${Date.now()}-${safeName}`
+        ];
+        let uploadedPath: string | null = null;
+        let lastUploadError: unknown = null;
+
+        for (const candidatePath of uploadCandidates) {
+          const { error: uploadError } = await supabase.storage.from(bucket).upload(candidatePath, imagem, {
+            upsert: false,
+            contentType: imagem.type
+          });
+          if (!uploadError) {
+            uploadedPath = candidatePath;
+            break;
+          }
+          lastUploadError = uploadError;
+        }
+
+        if (!uploadedPath) {
+          throw lastUploadError;
+        }
+
+        const { data: publicUrl } = supabase.storage.from(bucket).getPublicUrl(uploadedPath);
         payload = { ...payload, resposta_imagem_url: publicUrl?.publicUrl || '' };
       }
 
@@ -383,7 +420,9 @@ export const StudentDissertativas: React.FC = () => {
       showToast('Resposta enviada com sucesso!', 'success');
     } catch (error) {
       console.error('Erro ao enviar resposta:', error);
-      showToast('Erro ao enviar resposta.', 'error');
+      const details = getErrorDetails(error);
+      const shortDetails = details.length > 220 ? `${details.slice(0, 220)}...` : details;
+      showToast(shortDetails ? `Erro ao enviar resposta: ${shortDetails}` : 'Erro ao enviar resposta.', 'error');
     } finally {
       setSendingId(null);
     }

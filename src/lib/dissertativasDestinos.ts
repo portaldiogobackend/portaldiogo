@@ -14,19 +14,27 @@ type ColumnVariant = {
   enviado?: string;
 };
 
-const configuredTable = (import.meta.env.VITE_SUPABASE_DISSERTATIVAS_DESTINOS_TABLE as string | undefined)?.trim();
-const DEFAULT_TABLES = [
+const configuredTable = (import.meta.env.VITE_SUPABASE_DISSERTATIVAS_DESTINOS_TABLE as string | undefined)?.trim() || '';
+const DESTINO_TABLES = [
   'tbf_questoes_dissertativas_destinos',
-  'tbf_questoes_dissertativas_destino',
-  'tbf_questao_dissertativa_destinos',
-  'tbf_questao_dissertativa_destino'
+  'tbf_dissertativas_destinos',
+  'tbf_questoes_dissertativas_alunos'
 ];
-
-const TABLE_CANDIDATES = Array.from(new Set([configuredTable, ...DEFAULT_TABLES].filter(Boolean) as string[]));
+const FORBIDDEN_TABLES = new Set(['tbf_questoes_dissertativas_envios']);
+const TABLE_CANDIDATES = Array.from(new Set([configuredTable, ...DESTINO_TABLES]))
+  .map((table) => table.trim())
+  .filter(Boolean)
+  .filter((table) => !FORBIDDEN_TABLES.has(table));
 
 const COLUMN_VARIANTS: ColumnVariant[] = [
   { questao: 'questao_id', aluno: 'aluno_id', professor: 'professor_id', enviado: 'enviado_em' },
+  { questao: 'questao_id', aluno: 'aluno_id', professor: 'professor_id', enviado: 'created_at' },
+  { questao: 'questao_id', aluno: 'aluno_id', professor: 'professor_id', enviado: 'data_envio' },
   { questao: 'idquestao', aluno: 'idaluno', professor: 'idprofessor', enviado: 'enviado_em' },
+  { questao: 'idquestao', aluno: 'idaluno', professor: 'idprofessor', enviado: 'created_at' },
+  { questao: 'idquestao', aluno: 'idaluno', professor: 'idprofessor', enviado: 'data_envio' },
+  { questao: 'questao_id', aluno: 'aluno_id', professor: 'professor_id' },
+  { questao: 'idquestao', aluno: 'idaluno', professor: 'idprofessor' },
   { questao: 'questao_id', aluno: 'aluno_id' },
   { questao: 'idquestao', aluno: 'idaluno' }
 ];
@@ -73,6 +81,12 @@ const withKnownTableFirst = () => {
   return [resolvedTable, ...TABLE_CANDIDATES.filter((table) => table !== resolvedTable)];
 };
 
+const getTableCandidates = () => {
+  const candidates = withKnownTableFirst();
+  if (candidates.length > 0) return candidates;
+  return DESTINO_TABLES;
+};
+
 const buildInsertPayload = (rows: DestinoInsertRow[], variant: ColumnVariant) => (
   rows.map((row) => {
     const payload: Record<string, string> = {};
@@ -85,9 +99,13 @@ const buildInsertPayload = (rows: DestinoInsertRow[], variant: ColumnVariant) =>
 );
 
 export const insertDissertativaDestinos = async (rows: DestinoInsertRow[]) => {
+  if (rows.length === 0) {
+    return { data: [], error: null };
+  }
+
   let lastError: unknown = null;
 
-  for (const table of withKnownTableFirst()) {
+  for (const table of getTableCandidates()) {
     let relationMissing = false;
 
     for (const variant of COLUMN_VARIANTS) {
@@ -124,7 +142,7 @@ export const insertDissertativaDestinos = async (rows: DestinoInsertRow[]) => {
   }
 
   logDebug('failed to insert destinos with all candidates', {
-    tableCandidates: withKnownTableFirst(),
+    tableCandidates: getTableCandidates(),
     error: lastError
   });
   return { data: null, error: lastError };
@@ -133,7 +151,7 @@ export const insertDissertativaDestinos = async (rows: DestinoInsertRow[]) => {
 export const findDissertativaDestino = async (questaoId: string, alunoId: string) => {
   let lastError: unknown = null;
 
-  for (const table of withKnownTableFirst()) {
+  for (const table of getTableCandidates()) {
     let relationMissing = false;
 
     for (const variant of COLUMN_VARIANTS) {
@@ -175,7 +193,7 @@ export const findDissertativaDestino = async (questaoId: string, alunoId: string
   }
 
   logDebug('failed to find destino with all candidates', {
-    tableCandidates: withKnownTableFirst(),
+    tableCandidates: getTableCandidates(),
     error: lastError
   });
   return { exists: false, error: lastError };
@@ -188,7 +206,7 @@ export const listDissertativaDestinoPairs = async (questaoIds: string[], alunoId
 
   let lastError: unknown = null;
 
-  for (const table of withKnownTableFirst()) {
+  for (const table of getTableCandidates()) {
     let relationMissing = false;
 
     for (const variant of COLUMN_VARIANTS) {
@@ -238,7 +256,7 @@ export const listDissertativaDestinoPairs = async (questaoIds: string[], alunoId
   }
 
   logDebug('failed to list destino pairs with all candidates', {
-    tableCandidates: withKnownTableFirst(),
+    tableCandidates: getTableCandidates(),
     error: lastError
   });
   return { pairs: new Set<string>(), error: lastError };
@@ -247,7 +265,7 @@ export const listDissertativaDestinoPairs = async (questaoIds: string[], alunoId
 export const listDissertativaQuestaoIdsByAluno = async (alunoId: string) => {
   let lastError: unknown = null;
 
-  for (const table of withKnownTableFirst()) {
+  for (const table of getTableCandidates()) {
     let relationMissing = false;
 
     for (const variant of COLUMN_VARIANTS) {
@@ -290,7 +308,7 @@ export const listDissertativaQuestaoIdsByAluno = async (alunoId: string) => {
   }
 
   logDebug('failed to list questao ids by aluno with all candidates', {
-    tableCandidates: withKnownTableFirst(),
+    tableCandidates: getTableCandidates(),
     error: lastError
   });
   return { questaoIds: [] as string[], error: lastError };

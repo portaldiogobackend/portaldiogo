@@ -54,7 +54,7 @@ function App() {
         <Route path="/aluno/dashboard" element={<StudentDashboard />} />
         <Route path="/aluno/materias" element={<StudentMaterias />} />
         <Route path="/aluno/testes" element={<TesteAlunos />} />
-        <Route path="/aluno/questoes-dissertativas" element={<StudentDissertativas />} />
+        <Route path="/aluno/envio-dissertativas" element={<StudentDissertativas />} />
         <Route path="/aluno/central-duvidas" element={<CentralDuvidas />} />
       </Routes>
     </BrowserRouter>
