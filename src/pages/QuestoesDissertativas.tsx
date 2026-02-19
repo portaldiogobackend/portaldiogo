@@ -276,7 +276,7 @@ export default function QuestoesDissertativas() {
         setUserName(capitalizeWords(userData.nome.split(' ')[0]));
       }
       if (userData?.role === 'aluno') {
-        navigate('/aluno/envio-dissertativas', { replace: true });
+        navigate('/aluno/questoes-dissertativas', { replace: true });
         return;
       }
 
