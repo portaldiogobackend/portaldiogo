@@ -52,6 +52,7 @@ interface Aluno {
   id: string;
   nome: string;
   sobrenome?: string | null;
+  email?: string | null;
   serie?: string | null;
   idserie?: string | null;
 }
@@ -297,8 +298,11 @@ export default function QuestoesDissertativas() {
 
       const { data: alunosData } = await supabase
         .from('tbf_controle_user')
-        .select('id, nome, sobrenome, serie')
+        .select('id, nome, sobrenome, serie, email')
         .eq('role', 'aluno')
+        .eq('signature', 'ativo')
+        .not('email', 'is', null)
+        .neq('email', '')
         .order('nome');
       const seriesList = (seriesData as Serie[]) || [];
       const alunosList = (alunosData as Aluno[]) || [];
@@ -402,6 +406,10 @@ export default function QuestoesDissertativas() {
   };
 
   const openAssign = (questao: QuestaoDissertativa) => {
+    if (alunos.length === 0) {
+      showToast('Não há alunos com acesso elegíveis para envio.', 'error');
+      return;
+    }
     setCurrentAssignQuestao(questao);
     setAssignAlunoId('');
     setIsAssignModalOpen(true);
@@ -414,6 +422,10 @@ export default function QuestoesDissertativas() {
   };
 
   const openMassAssign = () => {
+    if (alunos.length === 0) {
+      showToast('Não há alunos com acesso elegíveis para envio.', 'error');
+      return;
+    }
     if (selectedQuestaoIds.length === 0) {
       showToast('Selecione pelo menos uma questão.', 'error');
       return;
@@ -1140,12 +1152,31 @@ export default function QuestoesDissertativas() {
                       Limpar
                     </button>
                   )}
+                  <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-white border border-gray-200">
+                    <label className="flex items-center gap-2 text-sm font-medium text-gray-600 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={allVisibleSelected}
+                        onChange={toggleAllVisible}
+                        className="w-4 h-4 text-[#4318FF] border-gray-300 rounded focus:ring-[#4318FF]"
+                      />
+                      Selecionar todas visíveis
+                    </label>
+                    {selectedQuestaoIds.length > 0 && (
+                      <button
+                        onClick={() => setSelectedQuestaoIds([])}
+                        className="text-xs font-medium text-red-600 hover:underline"
+                      >
+                        Limpar seleção
+                      </button>
+                    )}
+                  </div>
                   {selectedQuestaoIds.length > 0 && (
                     <div className="flex items-center gap-3">
                       <span className="text-sm font-medium text-gray-500">
                         {selectedQuestaoIds.length} selecionada(s)
                       </span>
-                      <Button onClick={openMassAssign} className="bg-[#4318FF] hover:bg-[#3311CC]">
+                      <Button onClick={openMassAssign} className="bg-[#4318FF] hover:bg-[#3311CC]" disabled={alunos.length === 0}>
                         Enviar selecionadas
                       </Button>
                     </div>
@@ -1532,6 +1563,9 @@ export default function QuestoesDissertativas() {
       >
         {currentAssignQuestao ? (
           <div className="space-y-6">
+            <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-700">
+              Somente alunos com acesso ativo (e-mail cadastrado) aparecem para envio.
+            </div>
             <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
               <p className="text-sm font-bold text-gray-500 mb-2">Questão</p>
               <MathContent html={currentAssignQuestao.enunciado} />
@@ -1553,7 +1587,7 @@ export default function QuestoesDissertativas() {
               <Button variant="ghost" onClick={closeAssign} className="flex-1">
                 Cancelar
               </Button>
-              <Button onClick={handleAssign} className="flex-1 bg-[#4318FF] hover:bg-[#3311CC]" isLoading={assigning}>
+              <Button onClick={handleAssign} className="flex-1 bg-[#4318FF] hover:bg-[#3311CC]" isLoading={assigning} disabled={alunos.length === 0}>
                 Enviar Questão
               </Button>
             </div>
@@ -1568,6 +1602,9 @@ export default function QuestoesDissertativas() {
         className="max-w-3xl max-h-[90vh] overflow-y-auto"
       >
         <div className="space-y-6">
+          <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-700">
+            Somente alunos com acesso ativo (e-mail cadastrado) aparecem para envio.
+          </div>
           <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
             <p className="text-sm font-bold text-gray-500 mb-2">Questões Selecionadas</p>
             <p className="text-sm text-gray-700">{selectedQuestaoIds.length} questão(ões)</p>
@@ -1596,7 +1633,7 @@ export default function QuestoesDissertativas() {
             <Button variant="ghost" onClick={closeMassAssign} className="flex-1">
               Cancelar
             </Button>
-            <Button onClick={handleMassAssign} className="flex-1 bg-[#4318FF] hover:bg-[#3311CC]" isLoading={massAssigning}>
+            <Button onClick={handleMassAssign} className="flex-1 bg-[#4318FF] hover:bg-[#3311CC]" isLoading={massAssigning} disabled={alunos.length === 0}>
               Enviar Para Alunos Selecionados
             </Button>
           </div>

@@ -1,7 +1,7 @@
 import { Button } from '@/components/ui/Button';
 import { Spinner } from '@/components/ui/Spinner';
 import { Toast, type ToastType } from '@/components/ui/Toast';
-import { listDissertativaQuestaoIdsByAluno } from '@/lib/dissertativasDestinos';
+import { listDissertativaQuestaoIdsByAlunos } from '@/lib/dissertativasDestinos';
 import { supabase } from '@/lib/supabase';
 import { capitalizeWords } from '@/lib/utils';
 import { format } from 'date-fns';
@@ -153,7 +153,7 @@ export const StudentDissertativas: React.FC = () => {
 
       const { data: userData } = await supabase
         .from('tbf_controle_user')
-        .select('nome, sobrenome, role, signature, emailaluno, idserie, idmat')
+        .select('nome, sobrenome, email, role, signature, emailaluno, idserie, idmat')
         .eq('id', user.id)
         .single();
       if (userData?.nome) {
@@ -171,6 +171,7 @@ export const StudentDissertativas: React.FC = () => {
       }
 
       let targetAlunoId = user.id;
+      let targetAlunoEmail = (userData?.email as string | null) || user.email || '';
       let targetSerie = userData?.idserie || null;
       let targetMaterias = userData?.idmat || [];
       let parentLinked: LinkedAluno[] = [];
@@ -215,6 +216,7 @@ export const StudentDissertativas: React.FC = () => {
         }
 
         targetAlunoId = selectedAluno.id;
+        targetAlunoEmail = selectedAluno.email || '';
         targetSerie = selectedAluno.idserie || null;
         targetMaterias = selectedAluno.idmat || [];
         setUserName(capitalizeWords(selectedAluno.nome?.split(' ')[0] || 'Aluno'));
@@ -237,7 +239,16 @@ export const StudentDissertativas: React.FC = () => {
       setSeries((seriesData as Serie[]) || []);
       setTemas((temasData as Tema[]) || []);
 
-      const { questaoIds } = await listDissertativaQuestaoIdsByAluno(targetAlunoId);
+      const assignmentAlunoIds = new Set<string>([targetAlunoId]);
+      if (targetAlunoEmail) {
+        const { data: aliasRows } = await supabase
+          .from('tbf_controle_user')
+          .select('id')
+          .eq('role', 'aluno')
+          .eq('email', targetAlunoEmail);
+        ((aliasRows as { id: string }[] | null) || []).forEach((row) => assignmentAlunoIds.add(row.id));
+      }
+      const { questaoIds } = await listDissertativaQuestaoIdsByAlunos(Array.from(assignmentAlunoIds));
 
       const generalQuery = supabase.from('tbf_questoes_dissertativas').select('*').order('created_at', { ascending: false });
       if (targetSerie) generalQuery.eq('idserie', targetSerie);

@@ -35,6 +35,7 @@ interface Aluno {
   sobrenome: string;
   materias: string[];
   serie: string;
+  email?: string | null;
 }
 
 interface Teste {
@@ -224,8 +225,11 @@ export default function AdminTestes() {
       // Fetch alunos
       const { data: alunosData, error: alunosError } = await supabase
         .from('tbf_controle_user')
-        .select('id, nome, sobrenome, materias, serie')
+        .select('id, nome, sobrenome, materias, serie, email')
         .eq('role', 'aluno')
+        .eq('signature', 'ativo')
+        .not('email', 'is', null)
+        .neq('email', '')
         .order('nome');
       if (alunosError) throw alunosError;
       setAlunos(alunosData || []);
@@ -449,6 +453,10 @@ export default function AdminTestes() {
   };
 
   const openMassAssignModal = () => {
+    if (alunos.length === 0) {
+      showToast('Não há alunos com acesso elegíveis para receber testes.', 'error');
+      return;
+    }
     if (selectedTesteIds.length === 0) {
       showToast('Selecione pelo menos um teste.', 'error');
       return;
@@ -1194,7 +1202,11 @@ export default function AdminTestes() {
               <Upload size={18} className="mr-2" />
               Envio Massivo
             </Button>
-            <Button onClick={openMassAssignModal} className="bg-white text-[#4318FF] border border-[#4318FF] hover:bg-gray-50">
+            <Button
+              onClick={openMassAssignModal}
+              className="bg-white text-[#4318FF] border border-[#4318FF] hover:bg-gray-50"
+              disabled={alunos.length === 0}
+            >
               <FileText size={18} className="mr-2" />
               Enviar Testes
             </Button>
@@ -1219,7 +1231,7 @@ export default function AdminTestes() {
                 <div className="flex items-center gap-4">
                   <span className="text-sm font-medium text-gray-500">{filteredTestesReport.length} de {testes.length} teste(s)</span>
                   <span className="text-sm font-medium text-gray-500">{selectedTesteIds.length} selecionado(s)</span>
-                  <Button onClick={openMassAssignModal} className="bg-[#4318FF] hover:bg-[#3311CC]">
+                  <Button onClick={openMassAssignModal} className="bg-[#4318FF] hover:bg-[#3311CC]" disabled={alunos.length === 0}>
                     Enviar testes
                   </Button>
                 </div>
@@ -1300,12 +1312,31 @@ export default function AdminTestes() {
                       Limpar
                     </button>
                   )}
+                  <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-white border border-gray-200">
+                    <label className="flex items-center gap-2 text-sm font-medium text-gray-600 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={allVisibleSelected}
+                        onChange={toggleAllVisibleTestes}
+                        className="w-4 h-4 text-[#4318FF] border-gray-300 rounded focus:ring-[#4318FF]"
+                      />
+                      Selecionar todos visíveis
+                    </label>
+                    {selectedTesteIds.length > 0 && (
+                      <button
+                        onClick={() => setSelectedTesteIds([])}
+                        className="text-xs font-medium text-red-600 hover:underline"
+                      >
+                        Limpar seleção
+                      </button>
+                    )}
+                  </div>
                   {selectedTesteIds.length > 0 && (
                     <div className="flex items-center gap-3">
                       <span className="text-sm font-medium text-gray-500">
                         {selectedTesteIds.length} selecionado(s)
                       </span>
-                      <Button onClick={openMassAssignModal} className="bg-[#4318FF] hover:bg-[#3311CC]">
+                      <Button onClick={openMassAssignModal} className="bg-[#4318FF] hover:bg-[#3311CC]" disabled={alunos.length === 0}>
                         Enviar selecionados
                       </Button>
                     </div>
@@ -1757,6 +1788,9 @@ export default function AdminTestes() {
         className="max-w-3xl max-h-[90vh] overflow-y-auto"
       >
         <div className="space-y-6">
+          <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-700">
+            Somente alunos com acesso ativo (e-mail cadastrado) aparecem para envio.
+          </div>
           <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
             <p className="text-sm font-bold text-gray-500 mb-2">Selecionados</p>
             <p className="text-sm text-gray-700">{selectedTesteIds.length} teste(s)</p>
@@ -1803,7 +1837,12 @@ export default function AdminTestes() {
             <Button variant="ghost" onClick={closeMassAssignModal} className="flex-1">
               Cancelar
             </Button>
-            <Button onClick={handleMassTestAssign} className="flex-1 bg-[#4318FF] hover:bg-[#3311CC]" isLoading={massAssigning}>
+          <Button
+            onClick={handleMassTestAssign}
+            className="flex-1 bg-[#4318FF] hover:bg-[#3311CC]"
+            isLoading={massAssigning}
+            disabled={alunos.length === 0}
+          >
               Enviar Testes
             </Button>
           </div>

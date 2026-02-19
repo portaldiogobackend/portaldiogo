@@ -45,6 +45,14 @@ export const StudentSidebar: React.FC<StudentSidebarProps> = ({
     return location.pathname === path;
   };
 
+  const handleMobileNavigate = (path: string) => {
+    if (!path || path === '#') return;
+    navigate(path);
+    if (isMobileOpen) {
+      window.requestAnimationFrame(() => setIsMobileOpen?.(false));
+    }
+  };
+
   return (
     <div className=''>
       {/* Mobile Backdrop */}
@@ -106,11 +114,10 @@ export const StudentSidebar: React.FC<StudentSidebarProps> = ({
                     ? 'bg-[#0061FF] text-white shadow-xl shadow-[#0061FF]/30'
                     : 'text-[#A3AED0] hover:bg-[#F4F7FE] hover:text-[#1B2559]'
                 }`}
-                onClick={() => {
-                  if(item.path !== '#') {
-                    navigate(item.path);
-                    setIsMobileOpen?.(false);
-                  }
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  handleMobileNavigate(item.path);
                 }}
               >
                 <item.icon size={20} className="min-w-[20px]" />

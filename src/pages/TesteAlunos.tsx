@@ -126,7 +126,7 @@ export const TesteAlunos: React.FC = () => {
       // Get user info
       const { data: userData } = await supabase
         .from('tbf_controle_user')
-        .select('nome, sobrenome, role, signature, emailaluno')
+        .select('nome, sobrenome, email, role, signature, emailaluno')
         .eq('id', user.id)
         .single();
 
@@ -142,6 +142,7 @@ export const TesteAlunos: React.FC = () => {
 
       let targetAlunoId = user.id;
       let targetNome = userData?.nome || '';
+      let targetAlunoEmail = (userData?.email as string | null) || user.email || '';
       let parentLinked: LinkedAluno[] = [];
 
       if (userData.role === 'pai') {
@@ -177,6 +178,7 @@ export const TesteAlunos: React.FC = () => {
         if (selectedAluno) {
           targetAlunoId = selectedAluno.id;
           targetNome = selectedAluno.nome || '';
+          targetAlunoEmail = selectedAluno.email || '';
         }
       } else {
         setIsParent(false);
@@ -188,13 +190,21 @@ export const TesteAlunos: React.FC = () => {
         setUserName(targetNome.split(' ')[0]);
       }
 
-      // Get Tests assigned to this student
-      // Note: We need to filter tests where idalunos array contains user.id
-      // Supabase PostgREST syntax for array contains is 'cs' (contains)
+      const assignmentAlunoIds = new Set<string>([targetAlunoId]);
+      if (targetAlunoEmail) {
+        const { data: aliasRows } = await supabase
+          .from('tbf_controle_user')
+          .select('id')
+          .eq('role', 'aluno')
+          .eq('email', targetAlunoEmail);
+        ((aliasRows as { id: string }[] | null) || []).forEach((row) => assignmentAlunoIds.add(row.id));
+      }
+
+      // Get Tests assigned to this student (including legacy profile aliases by email)
       const { data: testesData, error: testesError } = await supabase
         .from('tbf_testes')
         .select('*')
-        .contains('idalunos', [targetAlunoId])
+        .overlaps('idalunos', Array.from(assignmentAlunoIds))
         .order('created_at', { ascending: false });
 
       if (testesError) throw testesError;

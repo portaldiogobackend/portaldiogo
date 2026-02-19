@@ -263,6 +263,15 @@ export const listDissertativaDestinoPairs = async (questaoIds: string[], alunoId
 };
 
 export const listDissertativaQuestaoIdsByAluno = async (alunoId: string) => {
+  return listDissertativaQuestaoIdsByAlunos([alunoId]);
+};
+
+export const listDissertativaQuestaoIdsByAlunos = async (alunoIds: string[]) => {
+  const uniqueAlunoIds = Array.from(new Set(alunoIds.filter(Boolean)));
+  if (uniqueAlunoIds.length === 0) {
+    return { questaoIds: [] as string[], error: null };
+  }
+
   let lastError: unknown = null;
 
   for (const table of getTableCandidates()) {
@@ -272,7 +281,7 @@ export const listDissertativaQuestaoIdsByAluno = async (alunoId: string) => {
       const result = await supabase
         .from(table)
         .select(variant.questao)
-        .eq(variant.aluno, alunoId);
+        .in(variant.aluno, uniqueAlunoIds);
 
       if (!result.error) {
         resolvedTable = table;

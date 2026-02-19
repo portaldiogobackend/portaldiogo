@@ -1,4 +1,4 @@
-import React, { useCallback, useState, useEffect, useMemo } from 'react';
+﻿import React, { useCallback, useState, useEffect, useMemo } from 'react';
 import { Users, ChevronLeft, Edit, Trash2, Plus, Mail, Shield, Signature, Search, ChevronUp, ChevronDown, Filter, X, Menu } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Sidebar } from '../components/layout/Sidebar';
@@ -53,6 +53,7 @@ const Usuarios: React.FC = () => {
   const [showEditModal, setShowEditModal] = useState(false);
   const [userToEdit, setUserToEdit] = useState<UserProfile | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showQuickCreateModal, setShowQuickCreateModal] = useState(false);
   const [editForm, setEditForm] = useState({
     nome: '',
     sobrenome: '',
@@ -72,9 +73,16 @@ const Usuarios: React.FC = () => {
     role: 'aluno',
     linkedAlunoIds: [] as string[]
   });
+  const [quickCreateForm, setQuickCreateForm] = useState({
+    nome: '',
+    sobrenome: '',
+    telefone: ''
+  });
   const [isSaving, setIsSaving] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const [isQuickCreating, setIsQuickCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [quickCreateError, setQuickCreateError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [usersPerPage] = useState(10);
 
@@ -275,7 +283,7 @@ const Usuarios: React.FC = () => {
       setUserToEdit(null);
     } catch (error) {
       console.error('Error updating user:', error);
-      alert('Erro ao atualizar usuário.');
+      alert('Erro ao atualizar usuÃ¡rio.');
     } finally {
       setIsSaving(false);
     }
@@ -295,6 +303,16 @@ const Usuarios: React.FC = () => {
     setShowCreateModal(true);
   };
 
+  const openQuickCreateModal = () => {
+    setQuickCreateForm({
+      nome: '',
+      sobrenome: '',
+      telefone: ''
+    });
+    setQuickCreateError(null);
+    setShowQuickCreateModal(true);
+  };
+
   const handleCreateSave = async () => {
     const nome = createForm.nome.trim();
     const sobrenome = createForm.sobrenome.trim();
@@ -304,35 +322,40 @@ const Usuarios: React.FC = () => {
     const telefoneNumeros = telefone.replace(/\D/g, '');
     const role = createForm.role;
     const linkedAlunoEmails = alunosForLink
-      .filter(aluno => createForm.linkedAlunoIds.includes(aluno.id))
-      .map(aluno => aluno.email)
+      .filter((aluno) => createForm.linkedAlunoIds.includes(aluno.id))
+      .map((aluno) => aluno.email)
       .filter(Boolean);
 
     if (!nome || !telefone) {
-      setCreateError('Nome e telefone são obrigatórios.');
+      setCreateError('Nome e telefone sao obrigatorios.');
       return;
     }
 
     if (telefoneNumeros.length < 10) {
-      setCreateError('Por favor, insira um número de celular válido.');
+      setCreateError('Por favor, insira um numero de celular valido.');
       return;
     }
 
-    if (senha && !email) {
-      setCreateError('Informe o e-mail para criar senha de acesso.');
+    if (!email) {
+      setCreateError('E-mail é obrigatório para criar acesso.');
+      return;
+    }
+
+    if (!senha) {
+      setCreateError('Senha é obrigatória para criar acesso.');
       return;
     }
 
     if (email) {
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(email)) {
-        setCreateError('E-mail inválido.');
+        setCreateError('E-mail invalido.');
         return;
       }
     }
 
     if (role === 'pai' && !email) {
-      setCreateError('Para pai/mãe o e-mail é obrigatório.');
+      setCreateError('Para pai/mae o e-mail e obrigatorio.');
       return;
     }
 
@@ -373,14 +396,17 @@ const Usuarios: React.FC = () => {
         }
         throw new Error(error.message);
       }
+
       if (!data?.user) {
         const dataError = (data as { error?: string } | null)?.error;
-        throw new Error(dataError || 'Erro ao criar usuário.');
+        throw new Error(dataError || 'Erro ao criar usuario.');
       }
 
-      await logAudit('create_user', data.user.id, {
-        email: data.user.email,
-        nome: `${data.user.nome} ${data.user.sobrenome || ''}`.trim()
+      const createdUser = data.user as { id: string; email?: string; nome: string; sobrenome?: string | null };
+
+      await logAudit('create_user', createdUser.id, {
+        email: createdUser.email,
+        nome: `${createdUser.nome} ${createdUser.sobrenome || ''}`.trim()
       });
 
       setShowCreateModal(false);
@@ -397,10 +423,76 @@ const Usuarios: React.FC = () => {
       fetchAllUsers();
     } catch (error) {
       console.error('Error creating user:', error);
-      const message = error instanceof Error ? error.message : 'Erro ao criar usuário. Verifique as permissões.';
-      setCreateError(message);
+      const rawMessage = error instanceof Error ? error.message : 'Erro ao criar usuario. Verifique as permissoes.';
+      const isEdgeUnavailable =
+        rawMessage.includes('Failed to send a request to the Edge Function') ||
+        rawMessage.includes('Edge Function returned a non-2xx status code');
+
+      if (isEdgeUnavailable) {
+        const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-create-user`;
+        setCreateError(
+          `Nao foi possivel conectar na Edge Function de criacao de usuario. Verifique se a funcao "admin-create-user" esta publicada e ativa no Supabase, com a variavel "SUPABASE_SERVICE_ROLE_KEY" configurada. URL esperada: ${functionUrl}`
+        );
+      } else {
+        setCreateError(rawMessage);
+      }
     } finally {
       setIsCreating(false);
+    }
+  };
+
+  const handleQuickCreateSave = async () => {
+    const nome = quickCreateForm.nome.trim();
+    const sobrenome = quickCreateForm.sobrenome.trim();
+    const telefone = quickCreateForm.telefone.trim();
+    const telefoneNumeros = telefone.replace(/\D/g, '');
+
+    if (!nome || !telefone) {
+      setQuickCreateError('Nome e telefone são obrigatórios.');
+      return;
+    }
+
+    if (telefoneNumeros.length < 10) {
+      setQuickCreateError('Por favor, insira um número de celular válido.');
+      return;
+    }
+
+    setQuickCreateError(null);
+    setIsQuickCreating(true);
+    try {
+      const { data: created, error } = await supabase
+        .from('tbf_controle_user')
+        .insert({
+          id: crypto.randomUUID(),
+          nome: capitalizeWords(nome),
+          sobrenome: capitalizeWords(sobrenome),
+          telefone,
+          email: '',
+          role: 'aluno',
+          signature: 'inativo',
+          emailaluno: '',
+          emailpai: ''
+        })
+        .select('id, nome, sobrenome, email')
+        .single();
+
+      if (error || !created) {
+        throw error || new Error('Erro ao criar cadastro rápido.');
+      }
+
+      await logAudit('create_user_quick', created.id, {
+        nome: `${created.nome} ${created.sobrenome || ''}`.trim()
+      });
+
+      setShowQuickCreateModal(false);
+      setQuickCreateForm({ nome: '', sobrenome: '', telefone: '' });
+      fetchAllUsers();
+    } catch (error) {
+      console.error('Error creating quick user:', error);
+      const message = error instanceof Error ? error.message : 'Erro ao criar cadastro rápido.';
+      setQuickCreateError(message);
+    } finally {
+      setIsQuickCreating(false);
     }
   };
 
@@ -463,10 +555,15 @@ const Usuarios: React.FC = () => {
   };
 
   const roleLabel = (role: string) => {
-    if (role === 'pai') return 'Pai/Mãe';
+    if (role === 'pai') return 'Pai/MÃ£e';
     if (role === 'aluno') return 'Aluno';
     if (role === 'admin') return 'Admin';
-    return role || 'Usuário';
+    return role || 'UsuÃ¡rio';
+  };
+
+  const accessLabel = (user: UserProfile) => {
+    const hasEmail = Boolean(user.email && user.email.trim());
+    return hasEmail ? 'Com acesso' : 'Cadastro rápido';
   };
 
   const confirmDelete = async () => {
@@ -499,7 +596,7 @@ const Usuarios: React.FC = () => {
       setUserToDelete(null);
     } catch (error) {
       console.error('Error deleting user:', error);
-      alert('Erro ao excluir usuário. Verifique as permissões.');
+      alert('Erro ao excluir usuÃ¡rio. Verifique as permissÃµes.');
     } finally {
       setIsDeleting(null);
     }
@@ -615,6 +712,11 @@ const Usuarios: React.FC = () => {
     setCreateForm({ ...createForm, telefone: formatted });
   };
 
+  const handleQuickPhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const formatted = formatPhoneNumber(e.target.value);
+    setQuickCreateForm({ ...quickCreateForm, telefone: formatted });
+  };
+
   const clearFilters = () => {
     setSearchQuery('');
     setTempSearchQuery('');
@@ -660,12 +762,12 @@ const Usuarios: React.FC = () => {
       <Modal
         isOpen={showDeleteModal}
         onClose={() => setShowDeleteModal(false)}
-        title="Confirmar Exclusão"
+        title="Confirmar ExclusÃ£o"
       >
         <div className="space-y-4">
           <p className="text-[#A3AED0]">
-            Tem certeza que deseja excluir o usuário <span className="font-bold text-[#1B2559]">{userToDelete?.nome} {userToDelete?.sobrenome}</span>?
-            Esta ação não pode ser desfeita e removerá o acesso do usuário ao sistema.
+            Tem certeza que deseja excluir o usuÃ¡rio <span className="font-bold text-[#1B2559]">{userToDelete?.nome} {userToDelete?.sobrenome}</span>?
+            Esta aÃ§Ã£o nÃ£o pode ser desfeita e removerÃ¡ o acesso do usuÃ¡rio ao sistema.
           </p>
           <div className="flex justify-end gap-3 mt-6">
             <Button variant="ghost" onClick={() => setShowDeleteModal(false)}>
@@ -676,7 +778,7 @@ const Usuarios: React.FC = () => {
               onClick={confirmDelete}
               isLoading={isDeleting === userToDelete?.id}
             >
-              Excluir Usuário
+              Excluir UsuÃ¡rio
             </Button>
           </div>
         </div>
@@ -685,7 +787,7 @@ const Usuarios: React.FC = () => {
       <Modal
         isOpen={showEditModal}
         onClose={() => setShowEditModal(false)}
-        title="Editar Usuário"
+        title="Editar UsuÃ¡rio"
       >
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
@@ -710,7 +812,7 @@ const Usuarios: React.FC = () => {
           </div>
           
           <div className="space-y-2">
-            <label className="text-sm font-bold text-[#1B2559]">E-mail (Não editável)</label>
+            <label className="text-sm font-bold text-[#1B2559]">E-mail (NÃ£o editÃ¡vel)</label>
             <input 
               type="text"
               value={userToEdit?.email || ''}
@@ -747,7 +849,7 @@ const Usuarios: React.FC = () => {
                 className="w-full px-4 py-2 bg-[#F4F7FE] border-none rounded-xl text-[#2B3674] focus:ring-2 focus:ring-[#0061FF]/20 outline-none appearance-none"
               >
                 <option value="admin">Admin</option>
-                <option value="pai">Pai/Mãe</option>
+                <option value="pai">Pai/MÃ£e</option>
                 <option value="aluno">Aluno</option>
               </select>
             </div>
@@ -796,10 +898,10 @@ const Usuarios: React.FC = () => {
 
           {editForm.role === 'aluno' && (
              <div className="space-y-2 mt-2 pt-2 border-t border-gray-100">
-               <label className="text-sm font-bold text-[#1B2559]">Matérias do Aluno</label>
+               <label className="text-sm font-bold text-[#1B2559]">MatÃ©rias do Aluno</label>
                <div className="bg-[#F4F7FE] p-4 rounded-xl max-h-48 overflow-y-auto">
                   {materias.length === 0 ? (
-                    <p className="text-sm text-[#A3AED0]">Nenhuma matéria cadastrada.</p>
+                    <p className="text-sm text-[#A3AED0]">Nenhuma matÃ©ria cadastrada.</p>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                       {materias.map((materia) => (
@@ -820,13 +922,13 @@ const Usuarios: React.FC = () => {
           )}
 
           <div className="space-y-2">
-            <label className="text-sm font-bold text-[#1B2559]">Série</label>
+            <label className="text-sm font-bold text-[#1B2559]">SÃ©rie</label>
             <select
               value={editForm.serie}
               onChange={(e) => setEditForm({ ...editForm, serie: e.target.value })}
               className="w-full px-4 py-2 bg-[#F4F7FE] border-none rounded-xl text-[#2B3674] focus:ring-2 focus:ring-[#0061FF]/20 outline-none appearance-none"
             >
-              <option value="">Selecione uma série</option>
+              <option value="">Selecione uma sÃ©rie</option>
               {series.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.serie}
@@ -844,7 +946,64 @@ const Usuarios: React.FC = () => {
               onClick={handleEditSave}
               isLoading={isSaving}
             >
-              Salvar Alterações
+              Salvar AlteraÃ§Ãµes
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={showQuickCreateModal}
+        onClose={() => setShowQuickCreateModal(false)}
+        title="Cadastro Rápido (Frequência/Pagamentos)"
+      >
+        <div className="space-y-4">
+          {quickCreateError && (
+            <div className="bg-red-50 text-red-600 text-sm rounded-lg px-4 py-2">
+              {quickCreateError}
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <label className="text-sm font-bold text-[#1B2559]">Nome *</label>
+              <input
+                type="text"
+                value={quickCreateForm.nome}
+                onChange={(e) => setQuickCreateForm({ ...quickCreateForm, nome: e.target.value })}
+                className="w-full px-4 py-2 bg-[#F4F7FE] border-none rounded-xl text-[#2B3674] focus:ring-2 focus:ring-[#0061FF]/20 outline-none"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-bold text-[#1B2559]">Sobrenome</label>
+              <input
+                type="text"
+                value={quickCreateForm.sobrenome}
+                onChange={(e) => setQuickCreateForm({ ...quickCreateForm, sobrenome: e.target.value })}
+                className="w-full px-4 py-2 bg-[#F4F7FE] border-none rounded-xl text-[#2B3674] focus:ring-2 focus:ring-[#0061FF]/20 outline-none"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-bold text-[#1B2559]">Telefone *</label>
+            <input
+              type="tel"
+              value={quickCreateForm.telefone}
+              onChange={handleQuickPhoneChange}
+              className="w-full px-4 py-2 bg-[#F4F7FE] border-none rounded-xl text-[#2B3674] focus:ring-2 focus:ring-[#0061FF]/20 outline-none"
+              placeholder="(99) 99999-9999"
+            />
+            <p className="text-xs text-[#A3AED0]">
+              Esse cadastro é para frequência e pagamentos. Não cria acesso ao portal do aluno.
+            </p>
+          </div>
+
+          <div className="flex justify-end gap-3 mt-6">
+            <Button variant="ghost" onClick={() => setShowQuickCreateModal(false)}>
+              Cancelar
+            </Button>
+            <Button variant="primary" onClick={handleQuickCreateSave} isLoading={isQuickCreating}>
+              Criar Cadastro Rápido
             </Button>
           </div>
         </div>
@@ -853,7 +1012,7 @@ const Usuarios: React.FC = () => {
       <Modal
         isOpen={showCreateModal}
         onClose={() => setShowCreateModal(false)}
-        title="Novo Usuário"
+        title="Novo Usuário com Acesso"
       >
         <div className="space-y-4">
           {createError && (
@@ -894,7 +1053,7 @@ const Usuarios: React.FC = () => {
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-bold text-[#1B2559]">E-mail</label>
+            <label className="text-sm font-bold text-[#1B2559]">E-mail *</label>
             <input
               type="email"
               value={createForm.email}
@@ -919,7 +1078,7 @@ const Usuarios: React.FC = () => {
               className="w-full px-4 py-2 bg-[#F4F7FE] border-none rounded-xl text-[#2B3674] focus:ring-2 focus:ring-[#0061FF]/20 outline-none appearance-none"
             >
               <option value="admin">Admin</option>
-              <option value="pai">Pai/Mãe</option>
+              <option value="pai">Pai/MÃ£e</option>
               <option value="aluno">Aluno</option>
             </select>
           </div>
@@ -966,15 +1125,15 @@ const Usuarios: React.FC = () => {
           )}
 
           <div className="space-y-2">
-            <label className="text-sm font-bold text-[#1B2559]">Senha de Acesso</label>
+            <label className="text-sm font-bold text-[#1B2559]">Senha de Acesso *</label>
             <input
               type="password"
               value={createForm.senha}
               onChange={(e) => setCreateForm({ ...createForm, senha: e.target.value })}
               className="w-full px-4 py-2 bg-[#F4F7FE] border-none rounded-xl text-[#2B3674] focus:ring-2 focus:ring-[#0061FF]/20 outline-none"
-              placeholder="Opcional"
+              placeholder="Obrigatória"
             />
-            <p className="text-xs text-[#A3AED0]">Ao informar senha, o e-mail é obrigatório para criar o acesso.</p>
+            <p className="text-xs text-[#A3AED0]">Usuários com acesso podem receber exercícios e entrar com login/senha.</p>
           </div>
 
           <div className="flex justify-end gap-3 mt-6">
@@ -982,7 +1141,7 @@ const Usuarios: React.FC = () => {
               Cancelar
             </Button>
             <Button variant="primary" onClick={handleCreateSave} isLoading={isCreating}>
-              Criar Usuário
+              Criar UsuÃ¡rio
             </Button>
           </div>
         </div>
@@ -1007,11 +1166,17 @@ const Usuarios: React.FC = () => {
             </button>
           </div>
           
-          <h1 className="text-xl md:text-2xl font-bold text-[#1B2559] truncate">Gerenciamento de Usuários</h1>
-          <Button variant="primary" onClick={openCreateModal} className="hidden md:flex">
-            <Plus size={16} className="mr-2" />
-            Novo Usuário
-          </Button>
+          <h1 className="text-xl md:text-2xl font-bold text-[#1B2559] truncate">Gerenciamento de UsuÃ¡rios</h1>
+          <div className="hidden md:flex items-center gap-2">
+            <Button variant="ghost" onClick={openQuickCreateModal}>
+              <Plus size={16} className="mr-2" />
+              Cadastro Rápido
+            </Button>
+            <Button variant="primary" onClick={openCreateModal}>
+              <Plus size={16} className="mr-2" />
+              Novo Usuário com Acesso
+            </Button>
+          </div>
         </header>
 
         <main className="flex-1 overflow-y-auto p-4 md:p-10 pt-0 md:pt-4">
@@ -1024,8 +1189,8 @@ const Usuarios: React.FC = () => {
                       <Users size={24} />
                     </div>
                     <div>
-                      <h2 className="text-xl font-bold text-[#1B2559]">Lista de Usuários</h2>
-                      <p className="text-sm text-[#A3AED0]">Gerencie os acessos e permissões dos usuários</p>
+                      <h2 className="text-xl font-bold text-[#1B2559]">Lista de UsuÃ¡rios</h2>
+                      <p className="text-sm text-[#A3AED0]">Gerencie os acessos e permissÃµes dos usuÃ¡rios</p>
                     </div>
                   </div>
 
@@ -1044,10 +1209,16 @@ const Usuarios: React.FC = () => {
                     <Button variant="primary" size="sm" onClick={handleSearch}>
                       Buscar
                     </Button>
-                    <Button variant="primary" size="sm" onClick={openCreateModal} className="md:hidden">
-                      <Plus size={16} className="mr-2" />
-                      Novo Usuário
-                    </Button>
+                    <div className="md:hidden flex items-center gap-2">
+                      <Button variant="ghost" size="sm" onClick={openQuickCreateModal}>
+                        <Plus size={16} className="mr-2" />
+                        Cadastro Rápido
+                      </Button>
+                      <Button variant="primary" size="sm" onClick={openCreateModal}>
+                        <Plus size={16} className="mr-2" />
+                        Novo com Acesso
+                      </Button>
+                    </div>
                   </div>
                 </div>
 
@@ -1064,7 +1235,7 @@ const Usuarios: React.FC = () => {
                     >
                       <option value="all">Todos os Cargos</option>
                       <option value="admin">Admin</option>
-                      <option value="pai">Pai/Mãe</option>
+                      <option value="pai">Pai/MÃ£e</option>
                       <option value="aluno">Aluno</option>
                     </select>
                   </div>
@@ -1141,7 +1312,7 @@ const Usuarios: React.FC = () => {
                         onClick={() => handleSort('nome')}
                       >
                         <div className="flex items-center gap-2">
-                          Usuário
+                          UsuÃ¡rio
                           <div className={cn(
                             "flex flex-col opacity-0 group-hover:opacity-100 transition-opacity",
                             sortConfig.key === 'nome' && "opacity-100"
@@ -1166,6 +1337,7 @@ const Usuarios: React.FC = () => {
                           </div>
                         </div>
                       </th>
+                      <th className="px-8 py-6 font-semibold">Acesso</th>
                       <th 
                         className="px-8 py-6 font-semibold cursor-pointer hover:text-[#0061FF] transition-colors group"
                         onClick={() => handleSort('signature')}
@@ -1196,25 +1368,25 @@ const Usuarios: React.FC = () => {
                           </div>
                         </div>
                       </th>
-                      <th className="px-8 py-6 font-semibold">Matérias</th>
-                      <th className="px-8 py-6 font-semibold">Série</th>
-                      <th className="px-8 py-6 font-semibold text-right">Ações</th>
+                      <th className="px-8 py-6 font-semibold">MatÃ©rias</th>
+                      <th className="px-8 py-6 font-semibold">SÃ©rie</th>
+                      <th className="px-8 py-6 font-semibold text-right">AÃ§Ãµes</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
                     {loading ? (
                       <tr>
-                        <td colSpan={6} className="px-8 py-20 text-center">
+                        <td colSpan={8} className="px-8 py-20 text-center">
                           <div className="flex flex-col items-center gap-3">
                             <Spinner size="lg" />
-                            <p className="text-[#A3AED0] font-medium">Carregando usuários...</p>
+                            <p className="text-[#A3AED0] font-medium">Carregando usuÃ¡rios...</p>
                           </div>
                         </td>
                       </tr>
                     ) : sortedUsers.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="px-8 py-20 text-center text-[#A3AED0]">
-                          Nenhum usuário encontrado com os filtros selecionados.
+                        <td colSpan={8} className="px-8 py-20 text-center text-[#A3AED0]">
+                          Nenhum usuÃ¡rio encontrado com os filtros selecionados.
                         </td>
                       </tr>
                     ) : (
@@ -1238,8 +1410,18 @@ const Usuarios: React.FC = () => {
                           <td className="px-8 py-5">
                             <div className="flex items-center gap-2 text-[#2B3674] font-medium">
                               <Mail size={16} className="text-[#A3AED0]" />
-                              {user.email}
+                              {user.email || '-'}
                             </div>
+                          </td>
+                          <td className="px-8 py-5">
+                            <span className={cn(
+                              "px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider",
+                              accessLabel(user) === 'Com acesso'
+                                ? "bg-blue-100 text-blue-600"
+                                : "bg-gray-100 text-gray-600"
+                            )}>
+                              {accessLabel(user)}
+                            </span>
                           </td>
                           <td className="px-8 py-5">
                             <span className={cn(
@@ -1297,7 +1479,7 @@ const Usuarios: React.FC = () => {
               {users.length > 0 && (
                 <div className="p-8 border-t border-gray-100 flex justify-between items-center bg-gray-50/30">
                   <p className="text-sm text-[#A3AED0] font-medium">
-                    Mostrando <span className="text-[#1B2559] font-bold">{indexOfFirstUser + 1}</span> a <span className="text-[#1B2559] font-bold">{Math.min(indexOfLastUser, users.length)}</span> de <span className="text-[#1B2559] font-bold">{users.length}</span> usuários
+                    Mostrando <span className="text-[#1B2559] font-bold">{indexOfFirstUser + 1}</span> a <span className="text-[#1B2559] font-bold">{Math.min(indexOfLastUser, users.length)}</span> de <span className="text-[#1B2559] font-bold">{users.length}</span> usuÃ¡rios
                   </p>
                   <div className="flex gap-2">
                     <Button 
@@ -1330,7 +1512,7 @@ const Usuarios: React.FC = () => {
                       disabled={currentPage === totalPages}
                       className="text-[#A3AED0] hover:text-[#0061FF]"
                     >
-                      Próximo
+                      PrÃ³ximo
                     </Button>
                   </div>
                 </div>
@@ -1344,3 +1526,4 @@ const Usuarios: React.FC = () => {
 };
 
 export default Usuarios;
+
