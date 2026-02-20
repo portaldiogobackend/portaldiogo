@@ -1,4 +1,4 @@
-import { BrowserRouter, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AreaLogada } from './pages/AreaLogada';
 import { Contato } from './pages/Contato';
 import { Home } from './pages/Home';
@@ -12,14 +12,12 @@ import { Materias } from './pages/Materias';
 import { CentralDuvidasAdmin } from './pages/CentralDuvidasAdmin';
 import { WaitingApproval } from './pages/WaitingApproval';
 import { StudentDashboard } from './pages/StudentDashboard';
-import { StudentMaterias } from './pages/StudentMaterias';
 import { CentralDuvidas } from './pages/CentralDuvidas';
 import { Temas } from './pages/Temas';
 import { TesteAlunos } from './pages/TesteAlunos';
 import AdminTestes from '@/pages/admintestes';
 import ProtectedAdminRoute from '@/components/layout/ProtectedAdminRoute';
 import QuestoesDissertativas from './pages/QuestoesDissertativas';
-import { StudentDissertativas } from './pages/StudentDissertativas';
 import { FrequenciaPagamentos } from './pages/FrequenciaPagamentos';
 
 function App() {
@@ -52,10 +50,10 @@ function App() {
         {/* Rotas do Aluno */}
         <Route path="/aguardando-aprovacao" element={<WaitingApproval />} />
         <Route path="/aluno/dashboard" element={<StudentDashboard />} />
-        <Route path="/aluno/materias" element={<StudentMaterias />} />
+        <Route path="/aluno/materias" element={<Navigate to="/aluno/dashboard" replace />} />
         <Route path="/aluno/testes" element={<TesteAlunos />} />
-        <Route path="/aluno/questoes-dissertativas" element={<StudentDissertativas />} />
-        <Route path="/aluno/envio-dissertativas" element={<StudentDissertativas />} />
+        <Route path="/aluno/questoes-dissertativas" element={<Navigate to="/aluno/testes" replace />} />
+        <Route path="/aluno/envio-dissertativas" element={<Navigate to="/aluno/testes" replace />} />
         <Route path="/aluno/central-duvidas" element={<CentralDuvidas />} />
       </Routes>
     </BrowserRouter>

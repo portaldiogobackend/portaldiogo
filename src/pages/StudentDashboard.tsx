@@ -6,7 +6,6 @@ import {
   CheckCircle2,
   Clock3,
   FileCheck,
-  FileText,
   HelpCircle,
   Menu,
   XCircle
@@ -599,7 +598,7 @@ export const StudentDashboard: React.FC = () => {
               </div>
             </section>
 
-            <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <button
                 onClick={() => navigate('/aluno/testes')}
                 className="bg-white rounded-2xl p-5 text-left shadow-xl shadow-gray-200/30 hover:shadow-gray-200/50 transition-all"
@@ -609,27 +608,11 @@ export const StudentDashboard: React.FC = () => {
                     <FileCheck size={22} />
                   </div>
                   <span className="text-xs font-bold text-[#A3AED0]">
-                    {metrics.pendingTestsCount} pendente(s)
+                    {metrics.pendingTestsCount + metrics.dissertativasPendingCount} pendente(s)
                   </span>
                 </div>
                 <p className="mt-4 text-lg font-bold text-[#1B2559]">Ir para Testes</p>
-                <p className="text-sm text-[#A3AED0]">Responder e revisar exercícios</p>
-              </button>
-
-              <button
-                onClick={() => navigate('/aluno/questoes-dissertativas')}
-                className="bg-white rounded-2xl p-5 text-left shadow-xl shadow-gray-200/30 hover:shadow-gray-200/50 transition-all"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="p-3 rounded-xl bg-purple-50 text-purple-600">
-                    <FileText size={22} />
-                  </div>
-                  <span className="text-xs font-bold text-[#A3AED0]">
-                    {metrics.dissertativasPendingCount} pendente(s)
-                  </span>
-                </div>
-                <p className="mt-4 text-lg font-bold text-[#1B2559]">Questões Dissertativas</p>
-                <p className="text-sm text-[#A3AED0]">Responder questões abertas enviadas</p>
+                <p className="text-sm text-[#A3AED0]">Responder testes e questões dissertativas</p>
               </button>
 
               <button
