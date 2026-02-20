@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+﻿import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/Button';
@@ -95,10 +95,13 @@ export const FrequenciaPagamentos: React.FC = () => {
     periodo_referencia: ''
   });
 
-  const [reportAlunoId, setReportAlunoId] = useState('');
-  const [reportPeriodo, setReportPeriodo] = useState('');
-  const [reportStart, setReportStart] = useState('');
-  const [reportEnd, setReportEnd] = useState('');
+  const [freqAlunoId, setFreqAlunoId] = useState('');
+  const [freqStart, setFreqStart] = useState('');
+  const [freqEnd, setFreqEnd] = useState('');
+  const [pagAlunoId, setPagAlunoId] = useState('');
+  const [pagPeriodo, setPagPeriodo] = useState('');
+  const [pagStart, setPagStart] = useState('');
+  const [pagEnd, setPagEnd] = useState('');
 
   const isStaff = userRole === 'admin' || userRole === 'professor';
 
@@ -164,8 +167,10 @@ export const FrequenciaPagamentos: React.FC = () => {
 
           const stored = sessionStorage.getItem('parent_selected_aluno_id');
           const storedValid = stored && ids.includes(stored);
-          if (!reportAlunoId) {
-            setReportAlunoId(storedValid ? stored : ids[0]);
+          if (!freqAlunoId) {
+            const defaultAluno = storedValid ? stored : ids[0];
+            setFreqAlunoId(defaultAluno);
+            setPagAlunoId(defaultAluno);
           }
 
           const [frequenciasRes, pagamentosRes] = await Promise.all([
@@ -220,16 +225,17 @@ export const FrequenciaPagamentos: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [navigate, reportAlunoId, showToast]);
+  }, [freqAlunoId, navigate, showToast]);
 
   useEffect(() => {
     fetchInitialData();
   }, [fetchInitialData]);
 
   useEffect(() => {
-    if (!isParent || !reportAlunoId) return;
-    sessionStorage.setItem('parent_selected_aluno_id', reportAlunoId);
-  }, [isParent, reportAlunoId]);
+    const target = freqAlunoId || pagAlunoId;
+    if (!isParent || !target) return;
+    sessionStorage.setItem('parent_selected_aluno_id', target);
+  }, [freqAlunoId, isParent, pagAlunoId]);
 
   const alunoNome = (id: string) => {
     const aluno = alunos.find(a => a.id === id);
@@ -272,7 +278,7 @@ export const FrequenciaPagamentos: React.FC = () => {
 
   const handleSaveFrequencia = async () => {
     if (!frequenciaForm.aluno_id || !frequenciaForm.data_aula || !frequenciaForm.conteudo_aula.trim()) {
-      showToast('Preencha aluno, data da aula e conteúdo.', 'error');
+      showToast('Preencha aluno, data da aula e conteÃºdo.', 'error');
       return;
     }
     setSavingFrequencia(true);
@@ -287,7 +293,7 @@ export const FrequenciaPagamentos: React.FC = () => {
           })
           .eq('id', currentFrequencia.id);
         if (error) throw error;
-        showToast('Frequência atualizada.', 'success');
+        showToast('FrequÃªncia atualizada.', 'success');
       } else {
         const { error } = await supabase
           .from('tbf_frequencias')
@@ -297,12 +303,12 @@ export const FrequenciaPagamentos: React.FC = () => {
             conteudo_aula: frequenciaForm.conteudo_aula.trim()
           }]);
         if (error) throw error;
-        showToast('Frequência registrada.', 'success');
+        showToast('FrequÃªncia registrada.', 'success');
       }
       setIsFrequenciaModalOpen(false);
       await fetchInitialData();
     } catch {
-      showToast('Erro ao salvar frequência.', 'error');
+      showToast('Erro ao salvar frequÃªncia.', 'error');
     } finally {
       setSavingFrequencia(false);
     }
@@ -310,12 +316,12 @@ export const FrequenciaPagamentos: React.FC = () => {
 
   const handleSavePagamento = async () => {
     if (!pagamentoForm.aluno_id || !pagamentoForm.data_pagamento || !pagamentoForm.periodo_referencia.trim()) {
-      showToast('Preencha aluno, data e período de referência.', 'error');
+      showToast('Preencha aluno, data e perÃ­odo de referÃªncia.', 'error');
       return;
     }
     const valorPago = toNumber(pagamentoForm.valor_pago);
     if (valorPago <= 0) {
-      showToast('Informe um valor pago válido.', 'error');
+      showToast('Informe um valor pago vÃ¡lido.', 'error');
       return;
     }
     setSavingPagamento(true);
@@ -365,7 +371,7 @@ export const FrequenciaPagamentos: React.FC = () => {
       const table = deleteTarget.type === 'frequencia' ? 'tbf_frequencias' : 'tbf_pagamentos';
       const { error } = await supabase.from(table).delete().eq('id', deleteTarget.id);
       if (error) throw error;
-      showToast('Registro excluído.', 'success');
+      showToast('Registro excluÃ­do.', 'success');
       await fetchInitialData();
       setIsDeleteModalOpen(false);
     } catch {
@@ -377,34 +383,34 @@ export const FrequenciaPagamentos: React.FC = () => {
 
   const filteredFrequencias = useMemo(() => {
     return frequencias.filter((item) => {
-      if (reportAlunoId && item.aluno_id !== reportAlunoId) return false;
-      if (reportStart) {
-        const start = new Date(reportStart);
+      if (freqAlunoId && item.aluno_id !== freqAlunoId) return false;
+      if (freqStart) {
+        const start = new Date(freqStart);
         if (new Date(item.data_aula) < start) return false;
       }
-      if (reportEnd) {
-        const end = new Date(reportEnd);
+      if (freqEnd) {
+        const end = new Date(freqEnd);
         if (new Date(item.data_aula) > end) return false;
       }
       return true;
     });
-  }, [frequencias, reportAlunoId, reportStart, reportEnd]);
+  }, [freqAlunoId, freqEnd, freqStart, frequencias]);
 
   const filteredPagamentos = useMemo(() => {
     return pagamentos.filter((item) => {
-      if (reportAlunoId && item.aluno_id !== reportAlunoId) return false;
-      if (reportPeriodo && !item.periodo_referencia?.toLowerCase().includes(reportPeriodo.toLowerCase())) return false;
-      if (reportStart) {
-        const start = new Date(reportStart);
+      if (pagAlunoId && item.aluno_id !== pagAlunoId) return false;
+      if (pagPeriodo && !item.periodo_referencia?.toLowerCase().includes(pagPeriodo.toLowerCase())) return false;
+      if (pagStart) {
+        const start = new Date(pagStart);
         if (new Date(item.data_pagamento) < start) return false;
       }
-      if (reportEnd) {
-        const end = new Date(reportEnd);
+      if (pagEnd) {
+        const end = new Date(pagEnd);
         if (new Date(item.data_pagamento) > end) return false;
       }
       return true;
     });
-  }, [pagamentos, reportAlunoId, reportPeriodo, reportStart, reportEnd]);
+  }, [pagAlunoId, pagEnd, pagPeriodo, pagStart, pagamentos]);
 
   const totalRecebido = filteredPagamentos.reduce((acc, item) => acc + toNumber(item.valor_pago), 0);
 
@@ -450,13 +456,13 @@ export const FrequenciaPagamentos: React.FC = () => {
           <div className="flex flex-col items-end gap-2">
             <h1 className="text-xl md:text-2xl font-bold text-[#1B2559] flex items-center gap-2">
               <CalendarCheck size={24} />
-              Frequência e Pagamentos
+              FrequÃªncia e Pagamentos
             </h1>
             {isStaff && (
               <div className="flex flex-wrap gap-2 justify-end">
                 <Button onClick={openCreateFrequencia} className="bg-[#4318FF] hover:bg-[#3311CC]">
                   <Plus size={18} className="mr-2" />
-                  Registrar Frequência
+                  Registrar FrequÃªncia
                 </Button>
                 <Button onClick={openCreatePagamento} variant="secondary">
                   <Plus size={18} className="mr-2" />
@@ -476,7 +482,7 @@ export const FrequenciaPagamentos: React.FC = () => {
             ) : !isStaff && !isParent ? (
               <div className="bg-white rounded-3xl p-10 text-center shadow-xl shadow-gray-200/40">
                 <h3 className="text-xl font-bold text-gray-700 mb-2">Acesso restrito</h3>
-                <p className="text-gray-400">Esta área é exclusiva para professores e administradores.</p>
+                <p className="text-gray-400">Esta Ã¡rea Ã© exclusiva para professores e administradores.</p>
               </div>
             ) : (
               <>
@@ -484,8 +490,8 @@ export const FrequenciaPagamentos: React.FC = () => {
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                     <div className="bg-white rounded-3xl shadow-xl shadow-gray-200/40 border border-gray-100 p-6">
                       <div className="flex items-center justify-between mb-4">
-                        <h2 className="text-lg font-bold text-[#1B2559]">Frequência</h2>
-                        <span className="text-sm text-gray-400">{frequencias.length} registros</span>
+                        <h2 className="text-lg font-bold text-[#1B2559]">FrequÃªncia</h2>
+                        <span className="text-sm text-gray-400">{filteredFrequencias.length} registros</span>
                       </div>
                       <div className="overflow-x-auto">
                         <table className="w-full text-sm">
@@ -493,19 +499,19 @@ export const FrequenciaPagamentos: React.FC = () => {
                             <tr className="text-left text-gray-400 uppercase text-xs">
                               <th className="py-2">Aluno</th>
                               <th className="py-2">Data</th>
-                              <th className="py-2">Conteúdo</th>
-                              <th className="py-2 text-right">Ações</th>
+                              <th className="py-2">ConteÃºdo</th>
+                              <th className="py-2 text-right">AÃ§Ãµes</th>
                             </tr>
                           </thead>
                           <tbody>
-                            {frequencias.length === 0 ? (
+                            {filteredFrequencias.length === 0 ? (
                               <tr>
                                 <td colSpan={4} className="py-6 text-center text-gray-400">
-                                  Nenhum registro de frequência.
+                                  Nenhum registro de frequÃªncia para o filtro selecionado.
                                 </td>
                               </tr>
                             ) : (
-                              frequencias.map((item) => (
+                              filteredFrequencias.map((item) => (
                                 <tr key={item.id} className="border-t border-gray-100">
                                   <td className="py-3 font-medium text-[#1B2559]">{alunoNome(item.aluno_id)}</td>
                                   <td className="py-3">{formatDate(item.data_aula)}</td>
@@ -537,7 +543,7 @@ export const FrequenciaPagamentos: React.FC = () => {
                     <div className="bg-white rounded-3xl shadow-xl shadow-gray-200/40 border border-gray-100 p-6">
                       <div className="flex items-center justify-between mb-4">
                         <h2 className="text-lg font-bold text-[#1B2559]">Pagamentos</h2>
-                        <span className="text-sm text-gray-400">{pagamentos.length} registros</span>
+                        <span className="text-sm text-gray-400">{filteredPagamentos.length} registros</span>
                       </div>
                       <div className="overflow-x-auto">
                         <table className="w-full text-sm">
@@ -545,20 +551,20 @@ export const FrequenciaPagamentos: React.FC = () => {
                             <tr className="text-left text-gray-400 uppercase text-xs">
                               <th className="py-2">Aluno</th>
                               <th className="py-2">Data</th>
-                              <th className="py-2">Período</th>
+                              <th className="py-2">PerÃ­odo</th>
                               <th className="py-2">Valor</th>
-                              <th className="py-2 text-right">Ações</th>
+                              <th className="py-2 text-right">AÃ§Ãµes</th>
                             </tr>
                           </thead>
                           <tbody>
-                            {pagamentos.length === 0 ? (
+                            {filteredPagamentos.length === 0 ? (
                               <tr>
                                 <td colSpan={5} className="py-6 text-center text-gray-400">
-                                  Nenhum pagamento registrado.
+                                  Nenhum pagamento para o filtro selecionado.
                                 </td>
                               </tr>
                             ) : (
-                              pagamentos.map((item) => (
+                              filteredPagamentos.map((item) => (
                                 <tr key={item.id} className="border-t border-gray-100">
                                   <td className="py-3 font-medium text-[#1B2559]">{alunoNome(item.aluno_id)}</td>
                                   <td className="py-3">{formatDate(item.data_pagamento)}</td>
@@ -592,66 +598,109 @@ export const FrequenciaPagamentos: React.FC = () => {
 
                 <div className="bg-white rounded-3xl shadow-xl shadow-gray-200/40 border border-gray-100 p-6 space-y-6">
                   <div className="flex flex-wrap items-center justify-between gap-4">
-                    <h2 className="text-lg font-bold text-[#1B2559]">Relatório</h2>
+                    <h2 className="text-lg font-bold text-[#1B2559]">RelatÃ³rio</h2>
                     <Button onClick={() => window.print()} variant="outline" className="flex items-center gap-2">
                       <Printer size={18} />
-                      Imprimir Relatório
+                      Imprimir RelatÃ³rio
                     </Button>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    <div>
-                      <label className="text-xs font-semibold text-gray-500 uppercase">Aluno</label>
-                      <select
-                        value={reportAlunoId}
-                        onChange={(e) => setReportAlunoId(e.target.value)}
-                        className="mt-2 w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-[#4318FF] outline-none"
-                      >
-                        <option value="">Todos</option>
-                        {alunos.map((aluno) => (
-                          <option key={aluno.id} value={aluno.id}>
-                            {capitalizeWords(`${aluno.nome} ${aluno.sobrenome || ''}`.trim())}
-                          </option>
-                        ))}
-                      </select>
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div className="rounded-2xl border border-gray-100 p-4 space-y-3">
+                      <p className="text-sm font-bold text-[#1B2559]">Filtros de Frequência</p>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <div>
+                          <label className="text-xs font-semibold text-gray-500 uppercase">Aluno</label>
+                          <select
+                            value={freqAlunoId}
+                            onChange={(e) => setFreqAlunoId(e.target.value)}
+                            className="mt-2 w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-[#4318FF] outline-none"
+                          >
+                            <option value="">Todos</option>
+                            {alunos.map((aluno) => (
+                              <option key={aluno.id} value={aluno.id}>
+                                {capitalizeWords(`${aluno.nome} ${aluno.sobrenome || ''}`.trim())}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-xs font-semibold text-gray-500 uppercase">Data início</label>
+                          <input
+                            type="date"
+                            value={freqStart}
+                            onChange={(e) => setFreqStart(e.target.value)}
+                            className="mt-2 w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-[#4318FF] outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs font-semibold text-gray-500 uppercase">Data fim</label>
+                          <input
+                            type="date"
+                            value={freqEnd}
+                            onChange={(e) => setFreqEnd(e.target.value)}
+                            className="mt-2 w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-[#4318FF] outline-none"
+                          />
+                        </div>
+                      </div>
                     </div>
-                    <div>
-                      <label className="text-xs font-semibold text-gray-500 uppercase">Período de referência</label>
-                      <input
-                        type="text"
-                        value={reportPeriodo}
-                        onChange={(e) => setReportPeriodo(e.target.value)}
-                        placeholder="Ex: Março/2026"
-                        className="mt-2 w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-[#4318FF] outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs font-semibold text-gray-500 uppercase">Data início</label>
-                      <input
-                        type="date"
-                        value={reportStart}
-                        onChange={(e) => setReportStart(e.target.value)}
-                        className="mt-2 w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-[#4318FF] outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs font-semibold text-gray-500 uppercase">Data fim</label>
-                      <input
-                        type="date"
-                        value={reportEnd}
-                        onChange={(e) => setReportEnd(e.target.value)}
-                        className="mt-2 w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-[#4318FF] outline-none"
-                      />
+
+                    <div className="rounded-2xl border border-gray-100 p-4 space-y-3">
+                      <p className="text-sm font-bold text-[#1B2559]">Filtros de Pagamentos</p>
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                        <div>
+                          <label className="text-xs font-semibold text-gray-500 uppercase">Aluno</label>
+                          <select
+                            value={pagAlunoId}
+                            onChange={(e) => setPagAlunoId(e.target.value)}
+                            className="mt-2 w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-[#4318FF] outline-none"
+                          >
+                            <option value="">Todos</option>
+                            {alunos.map((aluno) => (
+                              <option key={aluno.id} value={aluno.id}>
+                                {capitalizeWords(`${aluno.nome} ${aluno.sobrenome || ''}`.trim())}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-xs font-semibold text-gray-500 uppercase">Período ref.</label>
+                          <input
+                            type="text"
+                            value={pagPeriodo}
+                            onChange={(e) => setPagPeriodo(e.target.value)}
+                            placeholder="Ex: Março/2026"
+                            className="mt-2 w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-[#4318FF] outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs font-semibold text-gray-500 uppercase">Data início</label>
+                          <input
+                            type="date"
+                            value={pagStart}
+                            onChange={(e) => setPagStart(e.target.value)}
+                            className="mt-2 w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-[#4318FF] outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs font-semibold text-gray-500 uppercase">Data fim</label>
+                          <input
+                            type="date"
+                            value={pagEnd}
+                            onChange={(e) => setPagEnd(e.target.value)}
+                            className="mt-2 w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-[#4318FF] outline-none"
+                          />
+                        </div>
+                      </div>
                     </div>
                   </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="bg-[#F4F7FE] rounded-2xl p-4">
                       <p className="text-xs font-semibold text-gray-400 uppercase">Aulas registradas</p>
                       <p className="text-2xl font-bold text-[#1B2559]">{filteredFrequencias.length}</p>
                     </div>
                     <div className="bg-[#F4F7FE] rounded-2xl p-4">
-                      <p className="text-xs font-semibold text-gray-400 uppercase">Pagamentos no período</p>
+                      <p className="text-xs font-semibold text-gray-400 uppercase">Pagamentos no perÃ­odo</p>
                       <p className="text-2xl font-bold text-[#1B2559]">{filteredPagamentos.length}</p>
                     </div>
                     <div className="bg-[#F4F7FE] rounded-2xl p-4">
@@ -667,14 +716,14 @@ export const FrequenciaPagamentos: React.FC = () => {
                           <tr className="text-left text-gray-400 uppercase text-xs">
                             <th className="py-3 px-4">Aluno</th>
                             <th className="py-3 px-4">Data</th>
-                            <th className="py-3 px-4">Conteúdo</th>
+                            <th className="py-3 px-4">ConteÃºdo</th>
                           </tr>
                         </thead>
                         <tbody>
                           {filteredFrequencias.length === 0 ? (
                             <tr>
                               <td colSpan={3} className="py-6 text-center text-gray-400">
-                                Nenhuma frequência para o filtro selecionado.
+                                Nenhuma frequÃªncia para o filtro selecionado.
                               </td>
                             </tr>
                           ) : (
@@ -695,7 +744,7 @@ export const FrequenciaPagamentos: React.FC = () => {
                           <tr className="text-left text-gray-400 uppercase text-xs">
                             <th className="py-3 px-4">Aluno</th>
                             <th className="py-3 px-4">Data</th>
-                            <th className="py-3 px-4">Período</th>
+                            <th className="py-3 px-4">PerÃ­odo</th>
                             <th className="py-3 px-4">Valor</th>
                           </tr>
                         </thead>
@@ -730,7 +779,7 @@ export const FrequenciaPagamentos: React.FC = () => {
       <Modal
         isOpen={isFrequenciaModalOpen}
         onClose={() => setIsFrequenciaModalOpen(false)}
-        title={currentFrequencia ? 'Editar Frequência' : 'Registrar Frequência'}
+        title={currentFrequencia ? 'Editar FrequÃªncia' : 'Registrar FrequÃªncia'}
         className="max-w-2xl"
       >
         <div className="space-y-5">
@@ -759,7 +808,7 @@ export const FrequenciaPagamentos: React.FC = () => {
             />
           </div>
           <div className="space-y-2">
-            <label className="text-sm font-medium text-gray-700">Conteúdo da aula *</label>
+            <label className="text-sm font-medium text-gray-700">ConteÃºdo da aula *</label>
             <textarea
               value={frequenciaForm.conteudo_aula}
               onChange={(e) => setFrequenciaForm(prev => ({ ...prev, conteudo_aula: e.target.value }))}
@@ -823,12 +872,12 @@ export const FrequenciaPagamentos: React.FC = () => {
             </div>
           </div>
           <div className="space-y-2">
-            <label className="text-sm font-medium text-gray-700">Período de referência *</label>
+            <label className="text-sm font-medium text-gray-700">PerÃ­odo de referÃªncia *</label>
             <input
               type="text"
               value={pagamentoForm.periodo_referencia}
               onChange={(e) => setPagamentoForm(prev => ({ ...prev, periodo_referencia: e.target.value }))}
-              placeholder="Ex: Março/2026"
+              placeholder="Ex: MarÃ§o/2026"
               className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-700 focus:ring-2 focus:ring-[#4318FF] outline-none"
             />
           </div>
@@ -848,7 +897,7 @@ export const FrequenciaPagamentos: React.FC = () => {
         onClose={() => setIsDeleteModalOpen(false)}
         onConfirm={handleDelete}
         title="Excluir registro"
-        message="Tem certeza que deseja excluir este registro? Esta ação não pode ser desfeita."
+        message="Tem certeza que deseja excluir este registro? Esta aÃ§Ã£o nÃ£o pode ser desfeita."
         loading={deleting}
       />
 
@@ -862,3 +911,4 @@ export const FrequenciaPagamentos: React.FC = () => {
     </div>
   );
 };
+

@@ -322,3 +322,58 @@ export const listDissertativaQuestaoIdsByAlunos = async (alunoIds: string[]) => 
   });
   return { questaoIds: [] as string[], error: lastError };
 };
+
+export const deleteDissertativaDestinoPairs = async (questaoIds: string[], alunoIds: string[]) => {
+  const uniqueQuestaoIds = Array.from(new Set(questaoIds.filter(Boolean)));
+  const uniqueAlunoIds = Array.from(new Set(alunoIds.filter(Boolean)));
+  if (uniqueQuestaoIds.length === 0 || uniqueAlunoIds.length === 0) {
+    return { data: null, error: null };
+  }
+
+  let lastError: unknown = null;
+
+  for (const table of getTableCandidates()) {
+    let relationMissing = false;
+
+    for (const variant of COLUMN_VARIANTS) {
+      const result = await supabase
+        .from(table)
+        .delete()
+        .in(variant.questao, uniqueQuestaoIds)
+        .in(variant.aluno, uniqueAlunoIds);
+
+      if (!result.error) {
+        resolvedTable = table;
+        const key = `${table}:${variant.questao}:${variant.aluno}`;
+        if (loggedResolvedKey !== key) {
+          loggedResolvedKey = key;
+          logDebug('resolved destination mapping for delete', { table, variant });
+        }
+        return result;
+      }
+
+      if (isMissingRelationError(result.error)) {
+        relationMissing = true;
+        lastError = result.error;
+        break;
+      }
+
+      if (isMissingColumnError(result.error)) {
+        lastError = result.error;
+        continue;
+      }
+
+      return result;
+    }
+
+    if (!relationMissing && resolvedTable === table) {
+      break;
+    }
+  }
+
+  logDebug('failed to delete destino pairs with all candidates', {
+    tableCandidates: getTableCandidates(),
+    error: lastError
+  });
+  return { data: null, error: lastError };
+};

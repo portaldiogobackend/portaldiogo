@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import DOMPurify from 'dompurify';
 import he from 'he';
 import { supabase } from '@/lib/supabase';
+import { fetchProvaRowsByAluno, insertProvaWithTempo } from '@/lib/provaMetrics';
 import { StudentSidebar } from '../components/layout/StudentSidebar';
 import { LogoutModal } from '../components/layout/LogoutModal';
 import { 
@@ -32,6 +33,7 @@ interface Teste {
 interface TesteRealizado {
   idteste: string;
   acerto: boolean;
+  tempoSegundos?: number;
 }
 
 interface Materia {
@@ -81,6 +83,7 @@ export const TesteAlunos: React.FC = () => {
   const [selectedTeste, setSelectedTeste] = useState<Teste | null>(null);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [showResult, setShowResult] = useState(false);
+  const [questionStartAt, setQuestionStartAt] = useState<number | null>(null);
 
   // Filters
   const [filterMateria, setFilterMateria] = useState<string>('');
@@ -209,13 +212,8 @@ export const TesteAlunos: React.FC = () => {
 
       if (testesError) throw testesError;
 
-      // Get Tests already taken by this student
-      const { data: provasData, error: provasError } = await supabase
-        .from('tbf_prova')
-        .select('idteste, acerto')
-        .eq('idaluno', targetAlunoId);
-
-      if (provasError) throw provasError;
+      // Get Tests already taken by this student (with optional timing columns)
+      const provasData = await fetchProvaRowsByAluno(targetAlunoId);
 
       setTestes(testesData || []);
       setTestesRealizados(provasData || []);
@@ -255,6 +253,7 @@ export const TesteAlunos: React.FC = () => {
     setSelectedTeste(teste);
     setSelectedOption(null);
     setShowResult(false);
+    setQuestionStartAt(Date.now());
   };
 
   const handleSubmitAnswer = async () => {
@@ -279,19 +278,20 @@ export const TesteAlunos: React.FC = () => {
       if (!user) return;
 
       const isCorrect = selectedOption === selectedTeste.resposta;
+      const elapsedSeconds = questionStartAt
+        ? Math.max(1, Math.round((Date.now() - questionStartAt) / 1000))
+        : 0;
 
-      const { error } = await supabase
-        .from('tbf_prova')
-        .insert([{
-          idaluno: user.id,
-          idteste: selectedTeste.id,
-          acerto: isCorrect
-        }]);
-
-      if (error) throw error;
+      await insertProvaWithTempo({
+        alunoId: user.id,
+        testeId: selectedTeste.id,
+        acerto: isCorrect,
+        tempoSegundos: elapsedSeconds
+      });
 
       setShowResult(true);
-      setTestesRealizados(prev => [...prev, { idteste: selectedTeste.id, acerto: isCorrect }]);
+      setTestesRealizados(prev => [...prev, { idteste: selectedTeste.id, acerto: isCorrect, tempoSegundos: elapsedSeconds }]);
+      setQuestionStartAt(null);
       
       if (isCorrect) {
         setToast({ message: 'Resposta correta! Parabéns!', type: 'success' });
@@ -518,7 +518,10 @@ export const TesteAlunos: React.FC = () => {
               // Test View
               <div className="bg-white rounded-3xl p-4 md:p-8 shadow-xl shadow-gray-200/40 animate-in fade-in slide-in-from-bottom-4 duration-500">
                 <button 
-                  onClick={() => setSelectedTeste(null)}
+                  onClick={() => {
+                    setSelectedTeste(null);
+                    setQuestionStartAt(null);
+                  }}
                   className="mb-6 text-sm font-bold text-[#A3AED0] hover:text-[#4318FF] flex items-center gap-1 transition-colors"
                 >
                   <ChevronLeft size={16} /> Voltar para lista
@@ -613,7 +616,10 @@ export const TesteAlunos: React.FC = () => {
                   </button>
                 ) : (
                   <button
-                    onClick={() => setSelectedTeste(null)}
+                    onClick={() => {
+                      setSelectedTeste(null);
+                      setQuestionStartAt(null);
+                    }}
                     className="w-full md:w-auto px-6 py-3 md:px-8 md:py-4 bg-gray-900 text-white font-bold rounded-xl shadow-lg hover:bg-gray-800 transition-all"
                   >
                     Voltar para Testes

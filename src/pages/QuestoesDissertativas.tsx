@@ -1,10 +1,11 @@
-import { Button } from '@/components/ui/Button';
+﻿import { Button } from '@/components/ui/Button';
 import { DeleteConfirmModal } from '@/components/ui/DeleteConfirmModal';
 import { Modal } from '@/components/ui/Modal';
 import { Spinner } from '@/components/ui/Spinner';
 import { Toast, type ToastType } from '@/components/ui/Toast';
 import {
   type DestinoInsertRow,
+  deleteDissertativaDestinoPairs,
   findDissertativaDestino,
   insertDissertativaDestinos,
   listDissertativaDestinoPairs
@@ -207,6 +208,7 @@ export default function QuestoesDissertativas() {
   const [assignAlunoId, setAssignAlunoId] = useState('');
   const [selectedQuestaoIds, setSelectedQuestaoIds] = useState<string[]>([]);
   const [isMassAssignModalOpen, setIsMassAssignModalOpen] = useState(false);
+  const [massAssignMode, setMassAssignMode] = useState<'assign' | 'unassign'>('assign');
   const [massAssignAlunoIds, setMassAssignAlunoIds] = useState<string[]>([]);
   const [massAssigning, setMassAssigning] = useState(false);
   const enunciadoRef = useRef<ReactQuill | null>(null);
@@ -230,6 +232,7 @@ export default function QuestoesDissertativas() {
   });
 
   const isStaff = userRole === 'admin' || userRole === 'professor';
+  const isAdmin = userRole === 'admin';
 
   const showToast = useCallback((message: string, type: ToastType) => {
     setToast({ message, type });
@@ -407,9 +410,10 @@ export default function QuestoesDissertativas() {
 
   const openAssign = (questao: QuestaoDissertativa) => {
     if (alunos.length === 0) {
-      showToast('Não há alunos com acesso elegíveis para envio.', 'error');
+      showToast('NÃ£o hÃ¡ alunos com acesso elegÃ­veis para envio.', 'error');
       return;
     }
+    setMassAssignMode('assign');
     setCurrentAssignQuestao(questao);
     setAssignAlunoId('');
     setIsAssignModalOpen(true);
@@ -421,15 +425,20 @@ export default function QuestoesDissertativas() {
     setAssignAlunoId('');
   };
 
-  const openMassAssign = () => {
+  const openMassAssign = (mode: 'assign' | 'unassign' = 'assign') => {
+    if (mode === 'unassign' && !isAdmin) {
+      showToast('Apenas administradores podem cancelar envios.', 'error');
+      return;
+    }
     if (alunos.length === 0) {
-      showToast('Não há alunos com acesso elegíveis para envio.', 'error');
+      showToast('NÃ£o hÃ¡ alunos com acesso elegÃ­veis para envio.', 'error');
       return;
     }
     if (selectedQuestaoIds.length === 0) {
-      showToast('Selecione pelo menos uma questão.', 'error');
+      showToast('Selecione pelo menos uma questÃ£o.', 'error');
       return;
     }
+    setMassAssignMode(mode);
     setMassAssignAlunoIds([]);
     setIsMassAssignModalOpen(true);
   };
@@ -502,15 +511,15 @@ export default function QuestoesDissertativas() {
   const handleCreateTema = async () => {
     const trimmed = newTemaName.trim();
     if (!trimmed) {
-      showToast('Digite o nome do conteúdo.', 'error');
+      showToast('Digite o nome do conteÃºdo.', 'error');
       return;
     }
     if (!formData.idmat) {
-      showToast('Selecione uma disciplina antes de criar o conteúdo.', 'error');
+      showToast('Selecione uma disciplina antes de criar o conteÃºdo.', 'error');
       return;
     }
     if (!formData.idserie) {
-      showToast('Selecione uma série antes de criar o conteúdo.', 'error');
+      showToast('Selecione uma sÃ©rie antes de criar o conteÃºdo.', 'error');
       return;
     }
     setCreatingTema(true);
@@ -532,10 +541,10 @@ export default function QuestoesDissertativas() {
       setTemas(nextTemas);
       setFormData(prev => ({ ...prev, idtema: (data as Tema).id }));
       setNewTemaName('');
-      showToast('Conteúdo criado com sucesso!', 'success');
+      showToast('ConteÃºdo criado com sucesso!', 'success');
     } catch (error) {
-      console.error('Erro ao criar conteúdo:', error);
-      showToast(formatErrorMessage(error, 'Erro ao criar conteúdo.'), 'error');
+      console.error('Erro ao criar conteÃºdo:', error);
+      showToast(formatErrorMessage(error, 'Erro ao criar conteÃºdo.'), 'error');
     } finally {
       setCreatingTema(false);
     }
@@ -555,11 +564,11 @@ export default function QuestoesDissertativas() {
       return;
     }
     if (!formData.idserie) {
-      showToast('Selecione uma série.', 'error');
+      showToast('Selecione uma sÃ©rie.', 'error');
       return;
     }
     if (!formData.professor_id) {
-      showToast('Selecione o professor responsável.', 'error');
+      showToast('Selecione o professor responsÃ¡vel.', 'error');
       return;
     }
 
@@ -583,7 +592,7 @@ export default function QuestoesDissertativas() {
           .single();
         if (error) throw error;
         setQuestoes(prev => prev.map(q => q.id === currentQuestao.id ? (data as QuestaoDissertativa) : q));
-        showToast('Questão atualizada com sucesso!', 'success');
+        showToast('QuestÃ£o atualizada com sucesso!', 'success');
       } else {
         const { data, error } = await supabase
           .from('tbf_questoes_dissertativas')
@@ -592,13 +601,13 @@ export default function QuestoesDissertativas() {
           .single();
         if (error) throw error;
         setQuestoes(prev => [data as QuestaoDissertativa, ...prev]);
-        showToast('Questão cadastrada com sucesso!', 'success');
+        showToast('QuestÃ£o cadastrada com sucesso!', 'success');
       }
 
       closeModal();
     } catch (error) {
-      console.error('Erro ao salvar questão:', error);
-      const message = error instanceof Error ? error.message : 'Erro ao salvar questão.';
+      console.error('Erro ao salvar questÃ£o:', error);
+      const message = error instanceof Error ? error.message : 'Erro ao salvar questÃ£o.';
       showToast(message, 'error');
     } finally {
       setSaving(false);
@@ -614,11 +623,11 @@ export default function QuestoesDissertativas() {
         .eq('id', currentQuestao.id);
       if (error) throw error;
       setQuestoes(prev => prev.filter(q => q.id !== currentQuestao.id));
-      showToast('Questão excluída com sucesso!', 'success');
+      showToast('QuestÃ£o excluÃ­da com sucesso!', 'success');
       closeDelete();
     } catch (error) {
-      console.error('Erro ao excluir questão:', error);
-      showToast(formatErrorMessage(error, 'Erro ao excluir questão.'), 'error');
+      console.error('Erro ao excluir questÃ£o:', error);
+      showToast(formatErrorMessage(error, 'Erro ao excluir questÃ£o.'), 'error');
     }
   };
 
@@ -629,7 +638,7 @@ export default function QuestoesDissertativas() {
       return;
     }
     if (!currentUserId) {
-      showToast('Usuário não identificado.', 'error');
+      showToast('UsuÃ¡rio nÃ£o identificado.', 'error');
       return;
     }
     setAssigning(true);
@@ -638,7 +647,7 @@ export default function QuestoesDissertativas() {
         const { exists: existing, error: existingError } = await findDissertativaDestino(currentAssignQuestao.id, assignAlunoId);
         if (existingError) throw existingError;
         if (existing) {
-          showToast('Questão já enviada para este aluno.', 'error');
+          showToast('QuestÃ£o jÃ¡ enviada para este aluno.', 'error');
           setAssigning(false);
           return;
         }
@@ -657,11 +666,37 @@ export default function QuestoesDissertativas() {
       const { error } = await insertDissertativaDestinos([payload]);
       if (error) throw error;
 
-      showToast('Questão enviada ao aluno!', 'success');
+      showToast('QuestÃ£o enviada ao aluno!', 'success');
       closeAssign();
     } catch (error) {
-      console.error('Erro ao enviar questão:', error);
-      showToast(formatErrorMessage(error, 'Erro ao enviar questão.'), 'error');
+      console.error('Erro ao enviar questÃ£o:', error);
+      showToast(formatErrorMessage(error, 'Erro ao enviar questÃ£o.'), 'error');
+    } finally {
+      setAssigning(false);
+    }
+  };
+
+  const handleUnassign = async () => {
+    if (!isAdmin) {
+      showToast('Apenas administradores podem cancelar envios.', 'error');
+      return;
+    }
+    if (!currentAssignQuestao) return;
+    if (!assignAlunoId) {
+      showToast('Selecione o aluno.', 'error');
+      return;
+    }
+
+    setAssigning(true);
+    try {
+      const { error } = await deleteDissertativaDestinoPairs([currentAssignQuestao.id], [assignAlunoId]);
+      if (error) throw error;
+
+      showToast('Envio cancelado para o aluno selecionado.', 'success');
+      closeAssign();
+    } catch (error) {
+      console.error('Erro ao cancelar envio da questÃ£o:', error);
+      showToast(formatErrorMessage(error, 'Erro ao cancelar envio da questÃ£o.'), 'error');
     } finally {
       setAssigning(false);
     }
@@ -669,11 +704,11 @@ export default function QuestoesDissertativas() {
 
   const handleMassAssign = async () => {
     if (selectedQuestaoIds.length === 0) {
-      showToast('Selecione pelo menos uma questão.', 'error');
+      showToast('Selecione pelo menos uma questÃ£o.', 'error');
       return;
     }
     if (!currentUserId) {
-      showToast('Usuário não identificado.', 'error');
+      showToast('UsuÃ¡rio nÃ£o identificado.', 'error');
       return;
     }
 
@@ -713,7 +748,7 @@ export default function QuestoesDissertativas() {
       });
 
       if (payload.length === 0) {
-        showToast('Todas as questões já foram enviadas.', 'error');
+        showToast('Todas as questÃµes jÃ¡ foram enviadas.', 'error');
         setMassAssigning(false);
         return;
       }
@@ -721,12 +756,44 @@ export default function QuestoesDissertativas() {
       const { error } = await insertDissertativaDestinos(payload);
       if (error) throw error;
 
-      showToast(`Questões enviadas para ${targetAlunoIds.length} aluno(s)!`, 'success');
+      showToast(`QuestÃµes enviadas para ${targetAlunoIds.length} aluno(s)!`, 'success');
       closeMassAssign();
       setSelectedQuestaoIds([]);
     } catch (error) {
-      console.error('Erro ao enviar questões:', error);
-      showToast(formatErrorMessage(error, 'Erro ao enviar questões.'), 'error');
+      console.error('Erro ao enviar questÃµes:', error);
+      showToast(formatErrorMessage(error, 'Erro ao enviar questÃµes.'), 'error');
+    } finally {
+      setMassAssigning(false);
+    }
+  };
+
+  const handleMassUnassign = async () => {
+    if (!isAdmin) {
+      showToast('Apenas administradores podem cancelar envios.', 'error');
+      return;
+    }
+    if (selectedQuestaoIds.length === 0) {
+      showToast('Selecione pelo menos uma questÃ£o.', 'error');
+      return;
+    }
+
+    const targetAlunoIds = Array.from(new Set(massAssignAlunoIds));
+    if (targetAlunoIds.length === 0) {
+      showToast('Selecione um ou mais alunos.', 'error');
+      return;
+    }
+
+    setMassAssigning(true);
+    try {
+      const { error } = await deleteDissertativaDestinoPairs(selectedQuestaoIds, targetAlunoIds);
+      if (error) throw error;
+
+      showToast('Envio cancelado para os alunos selecionados.', 'success');
+      closeMassAssign();
+      setSelectedQuestaoIds([]);
+    } catch (error) {
+      console.error('Erro ao cancelar envios em lote:', error);
+      showToast(formatErrorMessage(error, 'Erro ao cancelar envios em lote.'), 'error');
     } finally {
       setMassAssigning(false);
     }
@@ -829,7 +896,7 @@ export default function QuestoesDissertativas() {
         } else {
           const parts = line.split('|');
           if (parts.length < 4) {
-            errors.push(`Linha ${lineIndex}: Formato inválido. Use 4 a 6 colunas separadas por |`);
+            errors.push(`Linha ${lineIndex}: Formato invÃ¡lido. Use 4 a 6 colunas separadas por |`);
             continue;
           }
           enunciado = parts[0]?.trim();
@@ -841,7 +908,7 @@ export default function QuestoesDissertativas() {
         }
 
         if (!enunciado || !resposta || !disciplina || !serie) {
-          errors.push(`Linha ${lineIndex}: Campos obrigatórios faltando.`);
+          errors.push(`Linha ${lineIndex}: Campos obrigatÃ³rios faltando.`);
           continue;
         }
 
@@ -851,7 +918,7 @@ export default function QuestoesDissertativas() {
         const professorId = professor ? findProfessorId(professor) : (currentUserId || '');
 
         if (!idmat || !idserie || (tema && !idtema) || !professorId) {
-          errors.push(`Linha ${lineIndex}: Disciplina, série, tema ou professor inválido.`);
+          errors.push(`Linha ${lineIndex}: Disciplina, sÃ©rie, tema ou professor invÃ¡lido.`);
           continue;
         }
 
@@ -877,13 +944,13 @@ export default function QuestoesDissertativas() {
       setImporting(false);
       setImportLog({ success: successCount, errors });
       if (successCount > 0) {
-        showToast(`${successCount} questões importadas com sucesso!`, 'success');
+        showToast(`${successCount} questÃµes importadas com sucesso!`, 'success');
         await fetchInitialData();
         if (errors.length === 0) {
           setIsImportModalOpen(false);
         }
       } else {
-        showToast('Nenhuma questão importada. Verifique os erros.', 'error');
+        showToast('Nenhuma questÃ£o importada. Verifique os erros.', 'error');
       }
     };
 
@@ -913,7 +980,7 @@ export default function QuestoesDissertativas() {
         .single();
       if (error) throw error;
       setEnvios(prev => prev.map(e => e.id === currentEnvio.id ? (data as EnvioDissertativa) : e));
-      showToast('Correção atualizada com sucesso!', 'success');
+      showToast('CorreÃ§Ã£o atualizada com sucesso!', 'success');
       closeCorrection();
     } catch (error) {
       const message = error instanceof Error ? error.message : '';
@@ -931,15 +998,15 @@ export default function QuestoesDissertativas() {
             .single();
           if (retryError) throw retryError;
           setEnvios(prev => prev.map(e => e.id === currentEnvio.id ? (data as EnvioDissertativa) : e));
-          showToast('Correção salva sem nota.', 'success');
+          showToast('CorreÃ§Ã£o salva sem nota.', 'success');
           closeCorrection();
           return;
         } catch (retryErr) {
-          console.error('Erro ao salvar correção:', retryErr);
+          console.error('Erro ao salvar correÃ§Ã£o:', retryErr);
         }
       }
-      console.error('Erro ao salvar correção:', error);
-      showToast(formatErrorMessage(error, 'Erro ao salvar correção.'), 'error');
+      console.error('Erro ao salvar correÃ§Ã£o:', error);
+      showToast(formatErrorMessage(error, 'Erro ao salvar correÃ§Ã£o.'), 'error');
     }
   };
 
@@ -967,7 +1034,7 @@ export default function QuestoesDissertativas() {
         const file = input.files?.[0];
         if (!file) return;
         if (!currentUserId) {
-          showToast('Usuário não identificado.', 'error');
+          showToast('UsuÃ¡rio nÃ£o identificado.', 'error');
           return;
         }
         try {
@@ -980,7 +1047,7 @@ export default function QuestoesDissertativas() {
           if (uploadError) throw uploadError;
           const { data: publicUrl } = supabase.storage.from(bucket).getPublicUrl(filePath);
           if (!publicUrl?.publicUrl) {
-            showToast('Não foi possível obter a URL da imagem.', 'error');
+            showToast('NÃ£o foi possÃ­vel obter a URL da imagem.', 'error');
             return;
           }
           insertImageIntoQuill(quill, publicUrl.publicUrl);
@@ -1011,12 +1078,12 @@ export default function QuestoesDissertativas() {
     }
   }), [createImageHandler]);
 
-  const materiaName = (id: string) => materias.find(m => m.id === id)?.materia || '—';
-  const serieName = (id: string) => series.find(s => s.id === id)?.serie || '—';
-  const temaName = (id?: string | null) => temas.find(t => t.id === id)?.nometema || '—';
+  const materiaName = (id: string) => materias.find(m => m.id === id)?.materia || 'â€”';
+  const serieName = (id: string) => series.find(s => s.id === id)?.serie || 'â€”';
+  const temaName = (id?: string | null) => temas.find(t => t.id === id)?.nometema || 'â€”';
   const professorName = (id: string) => {
     const prof = professores.find(p => p.id === id);
-    return prof ? capitalizeWords(`${prof.nome} ${prof.sobrenome || ''}`.trim()) : '—';
+    return prof ? capitalizeWords(`${prof.nome} ${prof.sobrenome || ''}`.trim()) : 'â€”';
   };
   const alunoName = (id: string) => {
     const aluno = alunos.find(a => a.id === id);
@@ -1066,34 +1133,34 @@ export default function QuestoesDissertativas() {
             </button>
           </div>
 
-          <h1 className="text-xl md:text-2xl font-bold text-[#1B2559] truncate">Questões Dissertativas</h1>
+          <h1 className="text-xl md:text-2xl font-bold text-[#1B2559] truncate">QuestÃµes Dissertativas</h1>
 
           <div className="flex gap-3">
             {isStaff && (
               <>
                 <Button onClick={() => setIsImportModalOpen(true)} className="bg-white text-[#4318FF] border border-[#4318FF] hover:bg-gray-50">
                   <Upload size={18} className="mr-2" />
-                  Importação em Massa
+                  ImportaÃ§Ã£o em Massa
                 </Button>
                 <Button onClick={openModal} className="bg-[#4318FF] hover:bg-[#3311CC]">
                   <FileText size={18} className="mr-2" />
-                  Nova Questão
+                  Nova QuestÃ£o
                 </Button>
               </>
             )}
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto p-4 md:p-10 pt-0 md:pt-4">
+        <main className={`flex-1 overflow-y-auto p-4 md:p-10 pt-0 md:pt-4 ${selectedQuestaoIds.length > 0 ? 'pb-28 md:pb-10' : ''}`}>
           <div className="max-w-[1600px] mx-auto space-y-6">
             <div className="bg-white rounded-3xl shadow-xl shadow-gray-200/40 overflow-hidden border-none p-8">
-              <h2 className="text-2xl font-bold mb-2">Gerenciamento de Questões Dissertativas</h2>
+              <h2 className="text-2xl font-bold mb-2">Gerenciamento de QuestÃµes Dissertativas</h2>
               <p className="text-gray-500">Cadastre, importe e acompanhe envios dos alunos.</p>
             </div>
 
             <div className="bg-white rounded-3xl shadow-xl shadow-gray-200/40 overflow-hidden border-none p-8">
               <div className="flex items-center justify-between mb-6">
-                <h3 className="text-xl font-bold text-[#1B2559]">Banco de Questões</h3>
+                <h3 className="text-xl font-bold text-[#1B2559]">Banco de QuestÃµes</h3>
                 <span className="text-sm font-medium text-gray-500">{filteredQuestoes.length} de {questoes.length}</span>
               </div>
 
@@ -1128,7 +1195,7 @@ export default function QuestoesDissertativas() {
                     onChange={(e) => setFilterSerie(e.target.value)}
                     className="appearance-none pl-4 pr-10 py-2 rounded-lg bg-white border border-gray-200 text-sm focus:ring-2 focus:ring-[#4318FF] focus:border-transparent cursor-pointer min-w-[180px]"
                   >
-                    <option value="">Todas Séries</option>
+                    <option value="">Todas SÃ©ries</option>
                     {series.map(ser => (
                       <option key={ser.id} value={ser.id}>{ser.serie}</option>
                     ))}
@@ -1160,25 +1227,30 @@ export default function QuestoesDissertativas() {
                         onChange={toggleAllVisible}
                         className="w-4 h-4 text-[#4318FF] border-gray-300 rounded focus:ring-[#4318FF]"
                       />
-                      Selecionar todas visíveis
+                      Selecionar todas visÃ­veis
                     </label>
                     {selectedQuestaoIds.length > 0 && (
                       <button
                         onClick={() => setSelectedQuestaoIds([])}
                         className="text-xs font-medium text-red-600 hover:underline"
                       >
-                        Limpar seleção
+                        Limpar seleÃ§Ã£o
                       </button>
                     )}
                   </div>
                   {selectedQuestaoIds.length > 0 && (
-                    <div className="flex items-center gap-3">
+                    <div className="flex w-full sm:w-auto flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
                       <span className="text-sm font-medium text-gray-500">
                         {selectedQuestaoIds.length} selecionada(s)
                       </span>
-                      <Button onClick={openMassAssign} className="bg-[#4318FF] hover:bg-[#3311CC]" disabled={alunos.length === 0}>
+                      <Button onClick={() => openMassAssign('assign')} className="w-full sm:w-auto bg-[#4318FF] hover:bg-[#3311CC]" disabled={alunos.length === 0}>
                         Enviar selecionadas
                       </Button>
+                      {isAdmin && (
+                        <Button onClick={() => openMassAssign('unassign')} className="w-full sm:w-auto bg-red-600 hover:bg-red-700 text-white" disabled={alunos.length === 0}>
+                          Cancelar envio
+                        </Button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1197,11 +1269,11 @@ export default function QuestoesDissertativas() {
                         />
                       </th>
                       <th className="py-4 px-4 text-sm font-bold text-[#A3AED0] uppercase tracking-wider">Disciplina</th>
-                      <th className="py-4 px-4 text-sm font-bold text-[#A3AED0] uppercase tracking-wider">Série</th>
+                      <th className="py-4 px-4 text-sm font-bold text-[#A3AED0] uppercase tracking-wider">SÃ©rie</th>
                       <th className="py-4 px-4 text-sm font-bold text-[#A3AED0] uppercase tracking-wider">Tema</th>
                       <th className="py-4 px-4 text-sm font-bold text-[#A3AED0] uppercase tracking-wider">Professor</th>
                       <th className="py-4 px-4 text-sm font-bold text-[#A3AED0] uppercase tracking-wider">Enunciado</th>
-                      <th className="py-4 px-4 text-sm font-bold text-[#A3AED0] uppercase tracking-wider text-right">Ações</th>
+                      <th className="py-4 px-4 text-sm font-bold text-[#A3AED0] uppercase tracking-wider text-right">AÃ§Ãµes</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
@@ -1214,7 +1286,7 @@ export default function QuestoesDissertativas() {
                     ) : filteredQuestoes.length === 0 ? (
                       <tr>
                         <td colSpan={7} className="py-10 text-center text-gray-400">
-                          Nenhuma questão encontrada.
+                          Nenhuma questÃ£o encontrada.
                         </td>
                       </tr>
                     ) : (
@@ -1244,6 +1316,20 @@ export default function QuestoesDissertativas() {
                               >
                                 <Send size={18} />
                               </button>
+                              {isAdmin && (
+                                <button
+                                  onClick={() => {
+                                    setMassAssignMode('unassign');
+                                    setCurrentAssignQuestao(questao);
+                                    setAssignAlunoId('');
+                                    setIsAssignModalOpen(true);
+                                  }}
+                                  className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                  title="Cancelar envio"
+                                >
+                                  <X size={18} />
+                                </button>
+                              )}
                               <button
                                 onClick={() => openEdit(questao)}
                                 className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
@@ -1278,12 +1364,12 @@ export default function QuestoesDissertativas() {
                   <thead>
                     <tr className="border-b border-gray-100">
                       <th className="py-4 px-4 text-sm font-bold text-[#A3AED0] uppercase tracking-wider">Aluno</th>
-                      <th className="py-4 px-4 text-sm font-bold text-[#A3AED0] uppercase tracking-wider">Questão</th>
+                      <th className="py-4 px-4 text-sm font-bold text-[#A3AED0] uppercase tracking-wider">QuestÃ£o</th>
                       <th className="py-4 px-4 text-sm font-bold text-[#A3AED0] uppercase tracking-wider">Tipo</th>
                       <th className="py-4 px-4 text-sm font-bold text-[#A3AED0] uppercase tracking-wider">Enviado em</th>
                       <th className="py-4 px-4 text-sm font-bold text-[#A3AED0] uppercase tracking-wider">Nota</th>
                       <th className="py-4 px-4 text-sm font-bold text-[#A3AED0] uppercase tracking-wider">Status</th>
-                      <th className="py-4 px-4 text-sm font-bold text-[#A3AED0] uppercase tracking-wider text-right">Ações</th>
+                      <th className="py-4 px-4 text-sm font-bold text-[#A3AED0] uppercase tracking-wider text-right">AÃ§Ãµes</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
@@ -1304,10 +1390,10 @@ export default function QuestoesDissertativas() {
                             </td>
                             <td className="py-4 px-4 text-sm text-gray-600 capitalize">{envio.tipo_resposta}</td>
                             <td className="py-4 px-4 text-sm text-gray-600">
-                              {envio.enviado_em ? format(new Date(envio.enviado_em), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR }) : '—'}
+                              {envio.enviado_em ? format(new Date(envio.enviado_em), "dd/MM/yyyy 'Ã s' HH:mm", { locale: ptBR }) : 'â€”'}
                             </td>
                             <td className="py-4 px-4 text-sm text-gray-600">
-                              {envio.nota !== null && envio.nota !== undefined ? envio.nota : '—'}
+                              {envio.nota !== null && envio.nota !== undefined ? envio.nota : 'â€”'}
                             </td>
                             <td className="py-4 px-4 text-sm font-medium">
                               {envio.corrigida ? (
@@ -1331,12 +1417,43 @@ export default function QuestoesDissertativas() {
             </div>
           </div>
         </main>
+        {selectedQuestaoIds.length > 0 && (
+          <div className="md:hidden fixed bottom-4 left-4 right-4 z-40 rounded-2xl border border-gray-200 bg-white/95 backdrop-blur shadow-xl p-3">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-semibold text-[#1B2559]">{selectedQuestaoIds.length} questÃ£o(Ãµes) selecionada(s)</span>
+              <button
+                onClick={() => setSelectedQuestaoIds([])}
+                className="text-xs font-medium text-red-600 hover:underline"
+              >
+                Limpar
+              </button>
+            </div>
+            <div className={`grid gap-2 ${isAdmin ? 'grid-cols-2' : 'grid-cols-1'}`}>
+              <Button
+                onClick={() => openMassAssign('assign')}
+                className="w-full bg-[#4318FF] hover:bg-[#3311CC]"
+                disabled={alunos.length === 0}
+              >
+                Enviar
+              </Button>
+              {isAdmin && (
+                <Button
+                  onClick={() => openMassAssign('unassign')}
+                  className="w-full bg-red-600 hover:bg-red-700 text-white"
+                  disabled={alunos.length === 0}
+                >
+                  Cancelar envio
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       <Modal
         isOpen={isModalOpen}
         onClose={closeModal}
-        title={currentQuestao ? 'Editar Questão' : 'Nova Questão'}
+        title={currentQuestao ? 'Editar QuestÃ£o' : 'Nova QuestÃ£o'}
         className="max-w-4xl max-h-[90vh] overflow-y-auto"
       >
         <div className="space-y-6">
@@ -1362,7 +1479,7 @@ export default function QuestoesDissertativas() {
               onChange={(value) => setFormData(prev => ({ ...prev, resposta_esperada: value }))}
               modules={respostaModules}
               formats={formats}
-              placeholder="Descreva passo a passo, com LaTeX se necessário"
+              placeholder="Descreva passo a passo, com LaTeX se necessÃ¡rio"
               className="bg-white"
               ref={respostaRef}
             />
@@ -1399,7 +1516,7 @@ export default function QuestoesDissertativas() {
               </div>
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium text-gray-700">Série/Ano *</label>
+              <label className="text-sm font-medium text-gray-700">SÃ©rie/Ano *</label>
               <select
                 value={formData.idserie}
                 onChange={(e) => setFormData(prev => ({ ...prev, idserie: e.target.value }))}
@@ -1412,7 +1529,7 @@ export default function QuestoesDissertativas() {
               </select>
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium text-gray-700">Tema/Conteúdo</label>
+              <label className="text-sm font-medium text-gray-700">Tema/ConteÃºdo</label>
               <select
                 value={formData.idtema}
                 onChange={(e) => setFormData(prev => ({ ...prev, idtema: e.target.value }))}
@@ -1428,7 +1545,7 @@ export default function QuestoesDissertativas() {
                   type="text"
                   value={newTemaName}
                   onChange={(e) => setNewTemaName(e.target.value)}
-                  placeholder="Novo conteúdo"
+                  placeholder="Novo conteÃºdo"
                   className="flex-1 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-700 focus:ring-2 focus:ring-[#4318FF] outline-none"
                   disabled={!formData.idmat || !formData.idserie}
                 />
@@ -1443,7 +1560,7 @@ export default function QuestoesDissertativas() {
               </div>
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium text-gray-700">Professor responsável *</label>
+              <label className="text-sm font-medium text-gray-700">Professor responsÃ¡vel *</label>
               <select
                 value={formData.professor_id}
                 onChange={(e) => setFormData(prev => ({ ...prev, professor_id: e.target.value }))}
@@ -1460,11 +1577,11 @@ export default function QuestoesDissertativas() {
           {(formData.enunciado || formData.resposta_esperada) && (
             <div className="grid md:grid-cols-2 gap-6">
               <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
-                <p className="text-sm font-bold text-gray-500 mb-2">Prévia do Enunciado</p>
+                <p className="text-sm font-bold text-gray-500 mb-2">PrÃ©via do Enunciado</p>
                 <MathContent html={formData.enunciado} />
               </div>
               <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
-                <p className="text-sm font-bold text-gray-500 mb-2">Prévia da Resposta Esperada</p>
+                <p className="text-sm font-bold text-gray-500 mb-2">PrÃ©via da Resposta Esperada</p>
                 <MathContent html={formData.resposta_esperada} />
               </div>
             </div>
@@ -1475,7 +1592,7 @@ export default function QuestoesDissertativas() {
               Cancelar
             </Button>
             <Button onClick={handleSave} className="flex-1 bg-[#4318FF] hover:bg-[#3311CC]" isLoading={saving}>
-              {currentQuestao ? 'Salvar Alterações' : 'Salvar Questão'}
+              {currentQuestao ? 'Salvar AlteraÃ§Ãµes' : 'Salvar QuestÃ£o'}
             </Button>
           </div>
         </div>
@@ -1484,17 +1601,17 @@ export default function QuestoesDissertativas() {
       <Modal
         isOpen={isImportModalOpen}
         onClose={() => setIsImportModalOpen(false)}
-        title="Importação em Massa"
+        title="ImportaÃ§Ã£o em Massa"
         className="max-w-3xl max-h-[90vh] overflow-y-auto"
       >
         <div className="space-y-6">
           <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 text-sm text-blue-800">
             <p className="font-bold mb-2">Formatos aceitos</p>
-            <p className="mb-2">TXT (uma questão por linha):</p>
+            <p className="mb-2">TXT (uma questÃ£o por linha):</p>
             <p className="font-mono text-xs bg-white/50 p-2 rounded border border-blue-200">
               enunciado | resposta_esperada | disciplina | serie | tema(opcional) | professor(opcional)
             </p>
-            <p className="mt-3 mb-2">CSV com cabeçalhos:</p>
+            <p className="mt-3 mb-2">CSV com cabeÃ§alhos:</p>
             <p className="font-mono text-xs bg-white/50 p-2 rounded border border-blue-200">
               enunciado,resposta_esperada,disciplina,serie,tema,professor
             </p>
@@ -1524,7 +1641,7 @@ export default function QuestoesDissertativas() {
           {importLog && (
             <div className={`rounded-xl p-4 ${importLog.success > 0 && importLog.errors.length === 0 ? 'bg-green-50 border border-green-100' : 'bg-orange-50 border border-orange-100'}`}>
               <div className="flex items-center gap-2 mb-2">
-                <span className="font-bold text-gray-800">Resultado da Importação</span>
+                <span className="font-bold text-gray-800">Resultado da ImportaÃ§Ã£o</span>
               </div>
               <p className="text-sm text-gray-600 mb-2">
                 Sucessos: <span className="font-bold text-green-600">{importLog.success}</span> | Falhas: <span className="font-bold text-red-600">{importLog.errors.length}</span>
@@ -1534,7 +1651,7 @@ export default function QuestoesDissertativas() {
                   <ul className="space-y-1">
                     {importLog.errors.map((err, idx) => (
                       <li key={idx} className="text-xs text-red-600 flex gap-2">
-                        <span className="font-mono">•</span>
+                        <span className="font-mono">â€¢</span>
                         {err}
                       </li>
                     ))}
@@ -1549,7 +1666,7 @@ export default function QuestoesDissertativas() {
               Cancelar
             </Button>
             <Button onClick={handleImport} className="flex-1 bg-[#4318FF] hover:bg-[#3311CC]" isLoading={importing} disabled={!importFile}>
-              Importar Questões
+              Importar QuestÃµes
             </Button>
           </div>
         </div>
@@ -1558,7 +1675,7 @@ export default function QuestoesDissertativas() {
       <Modal
         isOpen={isAssignModalOpen}
         onClose={closeAssign}
-        title="Enviar Questão para Aluno"
+        title={massAssignMode === 'unassign' ? 'Cancelar envio de questão' : 'Enviar Questão para Aluno'}
         className="max-w-3xl max-h-[90vh] overflow-y-auto"
       >
         {currentAssignQuestao ? (
@@ -1567,7 +1684,7 @@ export default function QuestoesDissertativas() {
               Somente alunos com acesso ativo (e-mail cadastrado) aparecem para envio.
             </div>
             <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
-              <p className="text-sm font-bold text-gray-500 mb-2">Questão</p>
+              <p className="text-sm font-bold text-gray-500 mb-2">QuestÃ£o</p>
               <MathContent html={currentAssignQuestao.enunciado} />
             </div>
             <div className="space-y-2">
@@ -1587,8 +1704,13 @@ export default function QuestoesDissertativas() {
               <Button variant="ghost" onClick={closeAssign} className="flex-1">
                 Cancelar
               </Button>
-              <Button onClick={handleAssign} className="flex-1 bg-[#4318FF] hover:bg-[#3311CC]" isLoading={assigning} disabled={alunos.length === 0}>
-                Enviar Questão
+              <Button
+                onClick={massAssignMode === 'unassign' ? handleUnassign : handleAssign}
+                className={`flex-1 ${massAssignMode === 'unassign' ? 'bg-red-600 hover:bg-red-700' : 'bg-[#4318FF] hover:bg-[#3311CC]'}`}
+                isLoading={assigning}
+                disabled={alunos.length === 0}
+              >
+                {massAssignMode === 'unassign' ? 'Cancelar envio' : 'Enviar QuestÃ£o'}
               </Button>
             </div>
           </div>
@@ -1598,7 +1720,7 @@ export default function QuestoesDissertativas() {
       <Modal
         isOpen={isMassAssignModalOpen}
         onClose={closeMassAssign}
-        title="Enviar Para Alunos Selecionados"
+        title={massAssignMode === 'unassign' ? 'Cancelar envio para alunos selecionados' : 'Enviar Para Alunos Selecionados'}
         className="max-w-3xl max-h-[90vh] overflow-y-auto"
       >
         <div className="space-y-6">
@@ -1606,8 +1728,8 @@ export default function QuestoesDissertativas() {
             Somente alunos com acesso ativo (e-mail cadastrado) aparecem para envio.
           </div>
           <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
-            <p className="text-sm font-bold text-gray-500 mb-2">Questões Selecionadas</p>
-            <p className="text-sm text-gray-700">{selectedQuestaoIds.length} questão(ões)</p>
+            <p className="text-sm font-bold text-gray-500 mb-2">QuestÃµes Selecionadas</p>
+            <p className="text-sm text-gray-700">{selectedQuestaoIds.length} questÃ£o(Ãµes)</p>
           </div>
           
           <div className="space-y-2">
@@ -1626,15 +1748,20 @@ export default function QuestoesDissertativas() {
               ))}
             </select>
             <p className="text-xs text-gray-500">
-              Segure `Ctrl` (Windows) ou `Cmd` (Mac) para selecionar múltiplos alunos.
+              Segure `Ctrl` (Windows) ou `Cmd` (Mac) para selecionar mÃºltiplos alunos.
             </p>
           </div>
           <div className="flex gap-4 pt-4 border-t border-gray-100">
             <Button variant="ghost" onClick={closeMassAssign} className="flex-1">
               Cancelar
             </Button>
-            <Button onClick={handleMassAssign} className="flex-1 bg-[#4318FF] hover:bg-[#3311CC]" isLoading={massAssigning} disabled={alunos.length === 0}>
-              Enviar Para Alunos Selecionados
+            <Button
+              onClick={massAssignMode === 'unassign' ? handleMassUnassign : handleMassAssign}
+              className={`flex-1 ${massAssignMode === 'unassign' ? 'bg-red-600 hover:bg-red-700' : 'bg-[#4318FF] hover:bg-[#3311CC]'}`}
+              isLoading={massAssigning}
+              disabled={alunos.length === 0}
+            >
+              {massAssignMode === 'unassign' ? 'Cancelar envio selecionado' : 'Enviar Para Alunos Selecionados'}
             </Button>
           </div>
         </div>
@@ -1643,13 +1770,13 @@ export default function QuestoesDissertativas() {
       <Modal
         isOpen={isCorrectionModalOpen}
         onClose={closeCorrection}
-        title="Correção da Questão"
+        title="CorreÃ§Ã£o da QuestÃ£o"
         className="max-w-3xl max-h-[90vh] overflow-y-auto"
       >
         {currentEnvio ? (
           <div className="space-y-6">
             <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
-              <p className="text-sm font-bold text-gray-500 mb-2">Questão</p>
+              <p className="text-sm font-bold text-gray-500 mb-2">QuestÃ£o</p>
               <MathContent html={questaoById(currentEnvio.questao_id)?.enunciado || ''} />
             </div>
             <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
@@ -1661,12 +1788,12 @@ export default function QuestoesDissertativas() {
               )}
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium text-gray-700">Comentário do professor</label>
+              <label className="text-sm font-medium text-gray-700">ComentÃ¡rio do professor</label>
               <textarea
                 value={correctionForm.comentario_professor}
                 onChange={(e) => setCorrectionForm(prev => ({ ...prev, comentario_professor: e.target.value }))}
                 className="w-full min-h-[120px] px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-700 focus:ring-2 focus:ring-[#4318FF] outline-none"
-                placeholder="Escreva seus comentários..."
+                placeholder="Escreva seus comentÃ¡rios..."
               />
             </div>
           <div className="space-y-2">
@@ -1695,7 +1822,7 @@ export default function QuestoesDissertativas() {
                 Cancelar
               </Button>
               <Button onClick={handleSaveCorrection} className="flex-1 bg-[#4318FF] hover:bg-[#3311CC]">
-                Salvar Correção
+                Salvar CorreÃ§Ã£o
               </Button>
             </div>
           </div>
@@ -1706,8 +1833,8 @@ export default function QuestoesDissertativas() {
         isOpen={isDeleteModalOpen}
         onClose={closeDelete}
         onConfirm={handleDelete}
-        title="Excluir Questão"
-        message="Tem certeza que deseja excluir esta questão? Essa ação não pode ser desfeita."
+        title="Excluir QuestÃ£o"
+        message="Tem certeza que deseja excluir esta questÃ£o? Essa aÃ§Ã£o nÃ£o pode ser desfeita."
       />
 
       {toast && (
@@ -1720,3 +1847,5 @@ export default function QuestoesDissertativas() {
     </div>
   );
 }
+
+

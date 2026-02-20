@@ -1,4 +1,4 @@
-import { Button } from '@/components/ui/Button';
+﻿import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { Spinner } from '@/components/ui/Spinner';
 import { Toast, type ToastType } from '@/components/ui/Toast';
@@ -64,12 +64,12 @@ type SelectItem = {
 const SERIES_ORDER = [
   'Quinto Ano Fundamental',
   'Sexto Ano Fundamental',
-  'Sétimo Ano Fundamental',
+  'SÃ©timo Ano Fundamental',
   'Oitavo Ano Fundamental',
   'Nono Ano Fundamental',
-  'Primeiro Ano Ensino Médio',
-  'Segundo Ano Ensino Médio',
-  'Terceiro Ano Ensino Médio',
+  'Primeiro Ano Ensino MÃ©dio',
+  'Segundo Ano Ensino MÃ©dio',
+  'Terceiro Ano Ensino MÃ©dio',
   'Outros'
 ];
 
@@ -108,8 +108,10 @@ export default function AdminTestes() {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [userName, setUserName] = useState<string>('Admin');
+  const [userRole, setUserRole] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<{ message: string; type: ToastType } | null>(null);
+  const isAdmin = userRole === 'admin';
 
   // Data lists
   const [materias, setMaterias] = useState<Materia[]>([]);
@@ -126,6 +128,7 @@ export default function AdminTestes() {
   const [reportSortConfig, setReportSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
   const [selectedTesteIds, setSelectedTesteIds] = useState<string[]>([]);
   const [isMassAssignModalOpen, setIsMassAssignModalOpen] = useState(false);
+  const [massAssignMode, setMassAssignMode] = useState<'assign' | 'unassign'>('assign');
   const [massAssignSerieId, setMassAssignSerieId] = useState('');
   const [massAssignAlunoIds, setMassAssignAlunoIds] = useState<string[]>([]);
   const [massAssigning, setMassAssigning] = useState(false);
@@ -181,13 +184,14 @@ export default function AdminTestes() {
       if (user) {
         const { data } = await supabase
           .from('tbf_controle_user')
-          .select('nome')
+          .select('nome, role')
           .eq('id', user.id)
           .single();
 
         if (data?.nome) {
           setUserName(data.nome.split(' ')[0]);
         }
+        setUserRole(data?.role ?? null);
       }
 
       // Fetch materias
@@ -452,15 +456,20 @@ export default function AdminTestes() {
     });
   };
 
-  const openMassAssignModal = () => {
+  const openMassAssignModal = (mode: 'assign' | 'unassign' = 'assign') => {
+    if (mode === 'unassign' && !isAdmin) {
+      showToast('Apenas administradores podem cancelar envios.', 'error');
+      return;
+    }
     if (alunos.length === 0) {
-      showToast('Não há alunos com acesso elegíveis para receber testes.', 'error');
+      showToast('NÃ£o hÃ¡ alunos com acesso elegÃ­veis para receber testes.', 'error');
       return;
     }
     if (selectedTesteIds.length === 0) {
       showToast('Selecione pelo menos um teste.', 'error');
       return;
     }
+    setMassAssignMode(mode);
     setIsMassAssignModalOpen(true);
   };
 
@@ -600,7 +609,7 @@ export default function AdminTestes() {
       const allowedExtensions = ['.txt', '.doc', '.docx', '.pdf'];
 
       if (!allowedExtensions.includes(extension)) {
-        showToast('Formato inválido. Use .txt, .doc, .docx ou .pdf.', 'error');
+        showToast('Formato invÃ¡lido. Use .txt, .doc, .docx ou .pdf.', 'error');
         e.target.value = '';
         return;
       }
@@ -619,11 +628,11 @@ export default function AdminTestes() {
   const handleMassiveSubmit = async () => {
     // Validation
     if (massiveFormData.idmat.length === 0) {
-      showToast('Selecione pelo menos uma matéria.', 'error');
+      showToast('Selecione pelo menos uma matÃ©ria.', 'error');
       return;
     }
     if (massiveFormData.idseries.length === 0) {
-      showToast('Selecione pelo menos uma série.', 'error');
+      showToast('Selecione pelo menos uma sÃ©rie.', 'error');
       return;
     }
     if (!massiveFile) {
@@ -638,7 +647,7 @@ export default function AdminTestes() {
     reader.onload = async (e) => {
       const text = e.target?.result as string;
       if (!text) {
-        showToast('Arquivo vazio ou inválido.', 'error');
+        showToast('Arquivo vazio ou invÃ¡lido.', 'error');
         setImporting(false);
         return;
       }
@@ -657,7 +666,7 @@ export default function AdminTestes() {
         const parts = line.split('|');
 
         if (parts.length < 4) {
-          errors.push(`Linha ${i + 1}: Formato inválido. Esperado 4 colunas.`);
+          errors.push(`Linha ${i + 1}: Formato invÃ¡lido. Esperado 4 colunas.`);
           continue;
         }
 
@@ -667,13 +676,13 @@ export default function AdminTestes() {
         const justificativa = parts.slice(3).join('|').trim();
 
         if (!pergunta || !alternativas || !respostaStr) {
-          errors.push(`Linha ${i + 1}: Campos obrigatórios faltando.`);
+          errors.push(`Linha ${i + 1}: Campos obrigatÃ³rios faltando.`);
           continue;
         }
 
         const normalizedQuestion = stripHtml(pergunta).toLowerCase().replace(/\s+/g, ' ').trim();
         if (!normalizedQuestion) {
-          errors.push(`Linha ${i + 1}: Pergunta inválida ou vazia após limpeza.`);
+          errors.push(`Linha ${i + 1}: Pergunta invÃ¡lida ou vazia apÃ³s limpeza.`);
           continue;
         }
         if (questionsSeen.has(normalizedQuestion)) {
@@ -684,13 +693,13 @@ export default function AdminTestes() {
 
         const resposta = parseInt(respostaStr);
         if (isNaN(resposta) || resposta < 1 || resposta > 10) {
-           errors.push(`Linha ${i + 1}: Resposta deve ser um número entre 1 e 10.`);
+           errors.push(`Linha ${i + 1}: Resposta deve ser um nÃºmero entre 1 e 10.`);
            continue;
         }
 
         const alts = alternativas.split(';').map(a => a.trim()).filter(a => a !== '');
         if (alts.length < 2) {
-          errors.push(`Linha ${i + 1}: Mínimo de 2 alternativas necessárias.`);
+          errors.push(`Linha ${i + 1}: MÃ­nimo de 2 alternativas necessÃ¡rias.`);
           continue;
         }
         if (resposta > alts.length) {
@@ -698,7 +707,7 @@ export default function AdminTestes() {
           continue;
         }
         if (!stripHtml(justificativa).trim()) {
-          errors.push(`Linha ${i + 1}: Justificativa é obrigatória.`);
+          errors.push(`Linha ${i + 1}: Justificativa Ã© obrigatÃ³ria.`);
           continue;
         }
 
@@ -755,11 +764,11 @@ export default function AdminTestes() {
       return;
     }
     if (temaFormData.idmat.length === 0) {
-      showToast('Selecione pelo menos uma matéria.', 'error');
+      showToast('Selecione pelo menos uma matÃ©ria.', 'error');
       return;
     }
     if (temaFormData.idseries.length === 0) {
-      showToast('Selecione pelo menos uma série.', 'error');
+      showToast('Selecione pelo menos uma sÃ©rie.', 'error');
       return;
     }
 
@@ -936,7 +945,7 @@ export default function AdminTestes() {
 
       if (error) throw error;
 
-      showToast('Teste excluído com sucesso!', 'success');
+      showToast('Teste excluÃ­do com sucesso!', 'success');
       setTestes(prev => prev.filter(t => t.id !== id));
     } catch (error) {
       console.error('Error deleting test:', error);
@@ -944,7 +953,11 @@ export default function AdminTestes() {
     }
   };
 
-  const handleMassTestAssign = async () => {
+  const handleMassTestApply = async () => {
+    if (massAssignMode === 'unassign' && !isAdmin) {
+      showToast('Apenas administradores podem cancelar envios.', 'error');
+      return;
+    }
     if (selectedTesteIds.length === 0) {
       showToast('Selecione pelo menos um teste.', 'error');
       return;
@@ -957,7 +970,7 @@ export default function AdminTestes() {
         : [];
 
     if (targetAlunoIds.length === 0) {
-      showToast('Selecione um aluno ou uma série com alunos.', 'error');
+      showToast('Selecione um aluno ou uma sÃ©rie com alunos.', 'error');
       return;
     }
 
@@ -968,14 +981,16 @@ export default function AdminTestes() {
           const teste = testes.find(t => t.id === testeId);
           if (!teste) return null;
           const currentAlunos = Array.isArray(teste.idalunos) ? teste.idalunos : [];
-          const nextAlunos = Array.from(new Set([...currentAlunos, ...targetAlunoIds]));
+          const nextAlunos = massAssignMode === 'assign'
+            ? Array.from(new Set([...currentAlunos, ...targetAlunoIds]))
+            : currentAlunos.filter(alunoId => !targetAlunoIds.includes(alunoId));
           if (nextAlunos.length === currentAlunos.length) return null;
           return { testeId, nextAlunos };
         })
         .filter((update): update is { testeId: string; nextAlunos: string[] } => !!update);
 
       if (updates.length === 0) {
-        showToast('Todos os testes já foram enviados.', 'error');
+        showToast(massAssignMode === 'assign' ? 'Todos os testes já foram enviados.' : 'Nenhum envio encontrado para cancelamento.', 'error');
         setMassAssigning(false);
         return;
       }
@@ -1002,12 +1017,17 @@ export default function AdminTestes() {
         return updated ? updated : teste;
       }));
 
-      showToast(`Testes enviados para ${targetAlunoIds.length} aluno(s)!`, 'success');
+      showToast(
+        massAssignMode === 'assign'
+          ? `Testes enviados para ${targetAlunoIds.length} aluno(s)!`
+          : `Envio cancelado para ${targetAlunoIds.length} aluno(s)!`,
+        'success'
+      );
       closeMassAssignModal();
       setSelectedTesteIds([]);
     } catch (error) {
-      console.error('Erro ao enviar testes:', error);
-      showToast('Erro ao enviar testes.', 'error');
+      console.error(massAssignMode === 'assign' ? 'Erro ao enviar testes:' : 'Erro ao cancelar envios de testes:', error);
+      showToast(massAssignMode === 'assign' ? 'Erro ao enviar testes.' : 'Erro ao cancelar envios de testes.', 'error');
     } finally {
       setMassAssigning(false);
     }
@@ -1016,11 +1036,11 @@ export default function AdminTestes() {
   const handleSave = async () => {
     // Validation
     if (formData.idmat.length === 0) {
-      showToast('Selecione pelo menos uma matéria.', 'error');
+      showToast('Selecione pelo menos uma matÃ©ria.', 'error');
       return;
     }
     if (formData.idseries.length === 0) {
-      showToast('Selecione pelo menos uma série.', 'error');
+      showToast('Selecione pelo menos uma sÃ©rie.', 'error');
       return;
     }
     if (!stripHtml(formData.pergunta).trim()) {
@@ -1135,7 +1155,7 @@ export default function AdminTestes() {
         </div>
         <div className={`border border-gray-200 rounded-xl p-4 ${maxHeight} overflow-y-auto space-y-2 bg-gray-50`}>
           {items.length === 0 ? (
-             <p className="text-sm text-gray-400">Nenhum item disponível</p>
+             <p className="text-sm text-gray-400">Nenhum item disponÃ­vel</p>
           ) : (
             items.map(item => (
               <div key={item.id} className="flex items-center gap-2">
@@ -1203,7 +1223,7 @@ export default function AdminTestes() {
               Envio Massivo
             </Button>
             <Button
-              onClick={openMassAssignModal}
+              onClick={() => openMassAssignModal('assign')}
               className="bg-white text-[#4318FF] border border-[#4318FF] hover:bg-gray-50"
               disabled={alunos.length === 0}
             >
@@ -1217,21 +1237,21 @@ export default function AdminTestes() {
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto p-4 md:p-10 pt-0 md:pt-4">
+        <main className={`flex-1 overflow-y-auto p-4 md:p-10 pt-0 md:pt-4 ${selectedTesteIds.length > 0 ? 'pb-28 md:pb-10' : ''}`}>
           <div className="max-w-[1600px] mx-auto space-y-6">
             <div className="bg-white rounded-3xl shadow-xl shadow-gray-200/40 overflow-hidden border-none p-8">
               <h1 className="text-2xl font-bold mb-4">Painel Admin de Testes</h1>
-              <p className="text-gray-500">Use o botão "Cadastrar Testes" para adicionar novos questionários de múltipla escolha.</p>
+              <p className="text-gray-500">Use o botÃ£o "Cadastrar Testes" para adicionar novos questionÃ¡rios de mÃºltipla escolha.</p>
             </div>
 
-            {/* Relatório de Testes */}
+            {/* RelatÃ³rio de Testes */}
             <div className="bg-white rounded-3xl shadow-xl shadow-gray-200/40 overflow-hidden border-none p-8">
               <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-bold text-[#1B2559]">Relatório de Testes Cadastrados</h2>
+                <h2 className="text-xl font-bold text-[#1B2559]">RelatÃ³rio de Testes Cadastrados</h2>
                 <div className="flex items-center gap-4">
                   <span className="text-sm font-medium text-gray-500">{filteredTestesReport.length} de {testes.length} teste(s)</span>
                   <span className="text-sm font-medium text-gray-500">{selectedTesteIds.length} selecionado(s)</span>
-                  <Button onClick={openMassAssignModal} className="bg-[#4318FF] hover:bg-[#3311CC]" disabled={alunos.length === 0}>
+                  <Button onClick={() => openMassAssignModal('assign')} className="bg-[#4318FF] hover:bg-[#3311CC]" disabled={alunos.length === 0}>
                     Enviar testes
                   </Button>
                 </div>
@@ -1257,14 +1277,14 @@ export default function AdminTestes() {
                     />
                   </div>
 
-                  {/* Matéria Filter */}
+                  {/* MatÃ©ria Filter */}
                   <div className="relative">
                     <select
                       value={reportFilterMateria}
                       onChange={(e) => setReportFilterMateria(e.target.value)}
                       className="appearance-none pl-4 pr-10 py-2 rounded-lg bg-white border border-gray-200 text-sm focus:ring-2 focus:ring-[#4318FF] focus:border-transparent cursor-pointer min-w-[160px]"
                     >
-                      <option value="">Todas Matérias</option>
+                      <option value="">Todas MatÃ©rias</option>
                       {materias.map(mat => (
                         <option key={mat.id} value={mat.id}>{mat.materia}</option>
                       ))}
@@ -1287,14 +1307,14 @@ export default function AdminTestes() {
                     <ArrowUpDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                   </div>
 
-                  {/* Série Filter */}
+                  {/* SÃ©rie Filter */}
                   <div className="relative">
                     <select
                       value={reportFilterSerie}
                       onChange={(e) => setReportFilterSerie(e.target.value)}
                       className="appearance-none pl-4 pr-10 py-2 rounded-lg bg-white border border-gray-200 text-sm focus:ring-2 focus:ring-[#4318FF] focus:border-transparent cursor-pointer min-w-[180px]"
                     >
-                      <option value="">Todas Séries</option>
+                      <option value="">Todas SÃ©ries</option>
                       {series.map(ser => (
                         <option key={ser.id} value={ser.id}>{ser.serie}</option>
                       ))}
@@ -1320,25 +1340,30 @@ export default function AdminTestes() {
                         onChange={toggleAllVisibleTestes}
                         className="w-4 h-4 text-[#4318FF] border-gray-300 rounded focus:ring-[#4318FF]"
                       />
-                      Selecionar todos visíveis
+                      Selecionar todos visÃ­veis
                     </label>
                     {selectedTesteIds.length > 0 && (
                       <button
                         onClick={() => setSelectedTesteIds([])}
                         className="text-xs font-medium text-red-600 hover:underline"
                       >
-                        Limpar seleção
+                        Limpar seleÃ§Ã£o
                       </button>
                     )}
                   </div>
                   {selectedTesteIds.length > 0 && (
-                    <div className="flex items-center gap-3">
+                    <div className="flex w-full sm:w-auto flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
                       <span className="text-sm font-medium text-gray-500">
                         {selectedTesteIds.length} selecionado(s)
                       </span>
-                      <Button onClick={openMassAssignModal} className="bg-[#4318FF] hover:bg-[#3311CC]" disabled={alunos.length === 0}>
+                      <Button onClick={() => openMassAssignModal('assign')} className="w-full sm:w-auto bg-[#4318FF] hover:bg-[#3311CC]" disabled={alunos.length === 0}>
                         Enviar selecionados
                       </Button>
+                      {isAdmin && (
+                        <Button onClick={() => openMassAssignModal('unassign')} className="w-full sm:w-auto bg-red-600 hover:bg-red-700 text-white" disabled={alunos.length === 0}>
+                          Cancelar envio
+                        </Button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1363,7 +1388,7 @@ export default function AdminTestes() {
                           onClick={() => handleReportSort('materia')}
                         >
                           <div className="flex items-center gap-1">
-                            Matéria
+                            MatÃ©ria
                             <ArrowUpDown size={14} className={`opacity-0 group-hover:opacity-100 ${reportSortConfig?.key === 'materia' ? 'opacity-100 text-[#4318FF]' : ''}`} />
                           </div>
                         </th>
@@ -1381,13 +1406,13 @@ export default function AdminTestes() {
                           onClick={() => handleReportSort('serie')}
                         >
                           <div className="flex items-center gap-1">
-                            Série
+                            SÃ©rie
                             <ArrowUpDown size={14} className={`opacity-0 group-hover:opacity-100 ${reportSortConfig?.key === 'serie' ? 'opacity-100 text-[#4318FF]' : ''}`} />
                           </div>
                         </th>
                         <th className="py-4 px-4 text-sm font-bold text-[#A3AED0] uppercase tracking-wider">Pergunta</th>
                         <th className="py-4 px-4 text-sm font-bold text-[#A3AED0] uppercase tracking-wider text-center">Resposta</th>
-                        <th className="py-4 px-4 text-sm font-bold text-[#A3AED0] uppercase tracking-wider text-right">Ações</th>
+                        <th className="py-4 px-4 text-sm font-bold text-[#A3AED0] uppercase tracking-wider text-right">AÃ§Ãµes</th>
                       </tr>
                     </thead>
                   <tbody className="divide-y divide-gray-50">
@@ -1475,6 +1500,37 @@ export default function AdminTestes() {
             </div>
           </div>
         </main>
+        {selectedTesteIds.length > 0 && (
+          <div className="md:hidden fixed bottom-4 left-4 right-4 z-40 rounded-2xl border border-gray-200 bg-white/95 backdrop-blur shadow-xl p-3">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-semibold text-[#1B2559]">{selectedTesteIds.length} teste(s) selecionado(s)</span>
+              <button
+                onClick={() => setSelectedTesteIds([])}
+                className="text-xs font-medium text-red-600 hover:underline"
+              >
+                Limpar
+              </button>
+            </div>
+            <div className={`grid gap-2 ${isAdmin ? 'grid-cols-2' : 'grid-cols-1'}`}>
+              <Button
+                onClick={() => openMassAssignModal('assign')}
+                className="w-full bg-[#4318FF] hover:bg-[#3311CC]"
+                disabled={alunos.length === 0}
+              >
+                Enviar
+              </Button>
+              {isAdmin && (
+                <Button
+                  onClick={() => openMassAssignModal('unassign')}
+                  className="w-full bg-red-600 hover:bg-red-700 text-white"
+                  disabled={alunos.length === 0}
+                >
+                  Cancelar envio
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Modal de Cadastro de Testes */}
@@ -1490,9 +1546,9 @@ export default function AdminTestes() {
           </div>
         ) : (
           <div className="space-y-6">
-            {/* Matérias */}
+            {/* MatÃ©rias */}
             <MultiSelect 
-              label="Matérias *" 
+              label="MatÃ©rias *" 
               items={materias} 
               selectedIds={formData.idmat} 
               onToggle={(id) => toggleSelection(id, 'idmat')}
@@ -1500,9 +1556,9 @@ export default function AdminTestes() {
               displayProp="materia"
             />
 
-            {/* Séries */}
+            {/* SÃ©ries */}
             <MultiSelect 
-              label="Séries *" 
+              label="SÃ©ries *" 
               items={series} 
               selectedIds={formData.idseries} 
               onToggle={(id) => toggleSelection(id, 'idseries')}
@@ -1516,7 +1572,7 @@ export default function AdminTestes() {
                 <label className="text-sm font-medium text-gray-700">
                   Tema 
                   {(formData.idmat.length > 0 || formData.idseries.length > 0) && 
-                    <span className="text-xs text-gray-400 ml-2">(filtrado por matéria/série)</span>
+                    <span className="text-xs text-gray-400 ml-2">(filtrado por matÃ©ria/sÃ©rie)</span>
                   }
                 </label>
                 <button
@@ -1551,7 +1607,7 @@ export default function AdminTestes() {
               onToggle={(id) => toggleSelection(id, 'idalunos')}
               onToggleAll={(items) => handleToggleAll(items, 'idalunos')}
               subtitle={(formData.idmat.length > 0 || formData.idseries.length > 0) && (
-                <span className="text-xs text-gray-400">(filtrado por matéria/série)</span>
+                <span className="text-xs text-gray-400">(filtrado por matÃ©ria/sÃ©rie)</span>
               )}
               renderLabel={(aluno) => {
                 const alunoSerie = series.find(s => s.id === aluno.serie)?.serie;
@@ -1586,14 +1642,14 @@ export default function AdminTestes() {
             {/* Alternativas */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <label className="text-sm font-medium text-gray-700">Alternativas * (mín. 2, máx. 10)</label>
+                <label className="text-sm font-medium text-gray-700">Alternativas * (mÃ­n. 2, mÃ¡x. 10)</label>
                 <div className="flex gap-2">
                   <button
                     type="button"
                     onClick={() => removeAlternativa(formData.alternativas.length - 1)}
                     disabled={formData.alternativas.length <= 2}
                     className="p-1.5 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    title="Remover última alternativa"
+                    title="Remover Ãºltima alternativa"
                   >
                     <Minus size={16} />
                   </button>
@@ -1642,7 +1698,7 @@ export default function AdminTestes() {
                 ))}
               </div>
               <p className="text-xs text-gray-500">
-                Selecione o círculo ao lado da alternativa correta (resposta selecionada: {formData.resposta})
+                Selecione o cÃ­rculo ao lado da alternativa correta (resposta selecionada: {formData.resposta})
               </p>
             </div>
 
@@ -1656,7 +1712,7 @@ export default function AdminTestes() {
                   onChange={(value) => setFormData(prev => ({ ...prev, justificativa: value }))}
                   modules={modules}
                   formats={formats}
-                  placeholder="Explique por que esta é a resposta correta (opcional)..."
+                  placeholder="Explique por que esta Ã© a resposta correta (opcional)..."
                   className="bg-white"
                 />
               </div>
@@ -1676,7 +1732,7 @@ export default function AdminTestes() {
                 className="flex-1 bg-[#4318FF] hover:bg-[#3311CC]"
                 isLoading={saving}
               >
-                {formData.id ? "Salvar Alterações" : "Salvar Teste"}
+                {formData.id ? "Salvar AlteraÃ§Ãµes" : "Salvar Teste"}
               </Button>
             </div>
           </div>
@@ -1705,7 +1761,7 @@ export default function AdminTestes() {
 
           <div className="space-y-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium text-gray-700">Matérias Relacionadas *</label>
+              <label className="text-sm font-medium text-gray-700">MatÃ©rias Relacionadas *</label>
               <div className="border border-gray-200 rounded-xl p-4 max-h-40 overflow-y-auto space-y-2 bg-gray-50">
                 {materias.map(materia => (
                   <div key={materia.id} className="flex items-center gap-2">
@@ -1733,7 +1789,7 @@ export default function AdminTestes() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium text-gray-700">Séries Relacionadas *</label>
+              <label className="text-sm font-medium text-gray-700">SÃ©ries Relacionadas *</label>
               <div className="border border-gray-200 rounded-xl p-4 max-h-40 overflow-y-auto space-y-2 bg-gray-50">
                 {series.map(serie => (
                   <div key={serie.id} className="flex items-center gap-2">
@@ -1784,7 +1840,7 @@ export default function AdminTestes() {
       <Modal
         isOpen={isMassAssignModalOpen}
         onClose={closeMassAssignModal}
-        title="Enviar Testes Selecionados"
+        title={massAssignMode === 'unassign' ? 'Cancelar Envio de Testes Selecionados' : 'Enviar Testes Selecionados'}
         className="max-w-3xl max-h-[90vh] overflow-y-auto"
       >
         <div className="space-y-6">
@@ -1796,7 +1852,7 @@ export default function AdminTestes() {
             <p className="text-sm text-gray-700">{selectedTesteIds.length} teste(s)</p>
           </div>
           <div className="space-y-2">
-            <label className="text-sm font-medium text-gray-700">Série (opcional)</label>
+            <label className="text-sm font-medium text-gray-700">SÃ©rie (opcional)</label>
             <select
               value={massAssignSerieId}
               onChange={(e) => setMassAssignSerieId(e.target.value)}
@@ -1808,7 +1864,7 @@ export default function AdminTestes() {
               ))}
             </select>
             {massAssignSerieId && massAssignAlunos.length === 0 && (
-              <p className="text-xs text-red-500">Nenhum aluno encontrado para a série.</p>
+              <p className="text-xs text-red-500">Nenhum aluno encontrado para a sÃ©rie.</p>
             )}
           </div>
           <MultiSelect 
@@ -1818,7 +1874,7 @@ export default function AdminTestes() {
             onToggle={toggleMassAssignAluno}
             onToggleAll={toggleAllMassAssignAlunos}
             subtitle={massAssignSerieId && (
-              <span className="text-xs text-gray-400">(filtrado por série)</span>
+              <span className="text-xs text-gray-400">(filtrado por sÃ©rie)</span>
             )}
             renderLabel={(aluno) => {
               const alunoSerie = series.find(s => s.id === aluno.serie)?.serie;
@@ -1838,12 +1894,12 @@ export default function AdminTestes() {
               Cancelar
             </Button>
           <Button
-            onClick={handleMassTestAssign}
-            className="flex-1 bg-[#4318FF] hover:bg-[#3311CC]"
+            onClick={handleMassTestApply}
+            className={`flex-1 ${massAssignMode === 'unassign' ? 'bg-red-600 hover:bg-red-700' : 'bg-[#4318FF] hover:bg-[#3311CC]'}`}
             isLoading={massAssigning}
             disabled={alunos.length === 0}
           >
-              Enviar Testes
+              {massAssignMode === 'unassign' ? 'Cancelar envio de testes' : 'Enviar Testes'}
             </Button>
           </div>
         </div>
@@ -1862,7 +1918,7 @@ export default function AdminTestes() {
               <FileText size={20} />
             </div>
             <div className="text-sm text-blue-800">
-              <p className="font-bold mb-1">Instruções de Importação</p>
+              <p className="font-bold mb-1">InstruÃ§Ãµes de ImportaÃ§Ã£o</p>
               <p className="mb-2">Envie um arquivo <strong>.txt</strong> com os dados separados por pipe ( | ). Arquivos .doc/.docx/.pdf devem ser convertidos para .txt.</p>
               <p className="font-mono text-xs bg-white/50 p-2 rounded border border-blue-200">
                 Pergunta | Alternativa1;Alternativa2... | Resposta (1-10) | Justificativa
@@ -1870,9 +1926,9 @@ export default function AdminTestes() {
             </div>
           </div>
 
-          {/* Matérias */}
+          {/* MatÃ©rias */}
           <MultiSelect 
-            label="Matérias *" 
+            label="MatÃ©rias *" 
             items={materias} 
             selectedIds={massiveFormData.idmat} 
             onToggle={(id) => toggleMassiveSelection(id, 'idmat')}
@@ -1880,9 +1936,9 @@ export default function AdminTestes() {
             displayProp="materia"
           />
 
-          {/* Séries */}
+          {/* SÃ©ries */}
           <MultiSelect 
-            label="Séries *" 
+            label="SÃ©ries *" 
             items={series} 
             selectedIds={massiveFormData.idseries} 
             onToggle={(id) => toggleMassiveSelection(id, 'idseries')}
@@ -1896,7 +1952,7 @@ export default function AdminTestes() {
               <label className="text-sm font-medium text-gray-700">
                 Tema 
                 {(massiveFormData.idmat.length > 0 || massiveFormData.idseries.length > 0) && 
-                  <span className="text-xs text-gray-400 ml-2">(filtrado por matéria/série)</span>
+                  <span className="text-xs text-gray-400 ml-2">(filtrado por matÃ©ria/sÃ©rie)</span>
                 }
               </label>
               <button
@@ -1931,7 +1987,7 @@ export default function AdminTestes() {
             onToggle={(id) => toggleMassiveSelection(id, 'idalunos')}
             onToggleAll={(items) => handleMassiveToggleAll(items, 'idalunos')}
             subtitle={(massiveFormData.idmat.length > 0 || massiveFormData.idseries.length > 0) && (
-              <span className="text-xs text-gray-400">(filtrado por matéria/série)</span>
+              <span className="text-xs text-gray-400">(filtrado por matÃ©ria/sÃ©rie)</span>
             )}
             renderLabel={(aluno) => {
               const alunoSerie = series.find(s => s.id === aluno.serie)?.serie;
@@ -1949,7 +2005,7 @@ export default function AdminTestes() {
 
           {/* File Upload */}
           <div className="space-y-2">
-            <label className="text-sm font-medium text-gray-700">Arquivo de Importação (.txt, .doc, .docx, .pdf) *</label>
+            <label className="text-sm font-medium text-gray-700">Arquivo de ImportaÃ§Ã£o (.txt, .doc, .docx, .pdf) *</label>
             <div className={`border-2 border-dashed rounded-xl p-6 text-center transition-colors ${massiveFile ? 'border-[#4318FF] bg-blue-50' : 'border-gray-300 hover:border-[#4318FF]'}`}>
               <input
                 type="file"
@@ -1969,16 +2025,16 @@ export default function AdminTestes() {
             </div>
           </div>
 
-          {/* Log de Importação */}
+          {/* Log de ImportaÃ§Ã£o */}
           {importLog && (
             <div className={`rounded-xl p-4 ${importLog.success > 0 && importLog.errors.length === 0 ? 'bg-green-50 border border-green-100' : 'bg-orange-50 border border-orange-100'}`}>
               <div className="flex items-center gap-2 mb-2">
                 {importLog.errors.length > 0 ? (
                   <AlertTriangle className="text-orange-500" size={20} />
                 ) : (
-                  <div className="w-5 h-5 rounded-full bg-green-500 flex items-center justify-center text-white text-xs">✓</div>
+                  <div className="w-5 h-5 rounded-full bg-green-500 flex items-center justify-center text-white text-xs">âœ“</div>
                 )}
-                <span className="font-bold text-gray-800">Resultado da Importação</span>
+                <span className="font-bold text-gray-800">Resultado da ImportaÃ§Ã£o</span>
               </div>
               <p className="text-sm text-gray-600 mb-2">
                 Sucessos: <span className="font-bold text-green-600">{importLog.success}</span> | 
@@ -1991,7 +2047,7 @@ export default function AdminTestes() {
                   <ul className="space-y-1">
                     {importLog.errors.map((err, idx) => (
                       <li key={idx} className="text-xs text-red-600 flex gap-2">
-                        <span className="font-mono">•</span>
+                        <span className="font-mono">â€¢</span>
                         {err}
                       </li>
                     ))}
@@ -2032,4 +2088,5 @@ export default function AdminTestes() {
     </div>
   );
 }
+
 

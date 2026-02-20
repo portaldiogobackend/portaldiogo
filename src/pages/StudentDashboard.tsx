@@ -1,31 +1,20 @@
-﻿import { supabase } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase';
 import { listDissertativaQuestaoIdsByAlunos } from '@/lib/dissertativasDestinos';
+import { fetchProvaRowsByAluno } from '@/lib/provaMetrics';
+import { Button } from '@/components/ui/Button';
 import {
-  Activity,
-  Bell,
-  BookOpen,
-  CalendarCheck,
+  CheckCircle2,
+  Clock3,
   FileCheck,
   FileText,
+  HelpCircle,
   Menu,
-  MessageSquare,
-  Search,
-  Target
+  XCircle
 } from 'lucide-react';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LogoutModal } from '../components/layout/LogoutModal';
 import { StudentSidebar } from '../components/layout/StudentSidebar';
-
-interface Materia {
-  id: string;
-  materia: string;
-}
-
-interface Prova {
-  idteste: string;
-  acerto: boolean;
-}
 
 interface LinkedAluno {
   id: string;
@@ -37,114 +26,161 @@ interface LinkedAluno {
   idserie?: string | null;
 }
 
-interface DashboardMetrics {
-  materiasCount: number;
-  frequenciasCount: number;
-  newTestsCount: number;
-  dissertativasPendingCount: number;
-  resolutionPercent: number;
+interface TesteResumo {
+  id: string;
+  pergunta: string;
+  idtema: string[] | null;
+  created_at?: string | null;
+}
+
+interface Tema {
+  id: string;
+  nometema: string;
+}
+
+interface DuvidaRow {
+  id: string;
+  resposta: string | null;
+  created_at?: string | null;
+}
+
+interface ThemePerformance {
+  themeId: string;
+  themeName: string;
+  resolvedCount: number;
+  correctCount: number;
+  wrongCount: number;
   accuracyPercent: number;
-  totalActivities: number;
-  resolvedActivities: number;
+  errorPercent: number;
+  totalSeconds: number;
+}
+
+interface QuestionPerformance {
+  testId: string;
+  preview: string;
+  themeLabel: string;
+  attempts: number;
+  status: 'acerto' | 'erro';
+  totalSeconds: number;
+}
+
+interface DashboardMetrics {
+  resolvedTestsCount: number;
+  pendingTestsCount: number;
+  dissertativasPendingCount: number;
+  openDoubtsCount: number;
+  totalStudySeconds: number;
+  correctCount: number;
+  wrongCount: number;
+  accuracyPercent: number;
+  errorPercent: number;
+  themePerformance: ThemePerformance[];
+  questionPerformance: QuestionPerformance[];
 }
 
 const initialMetrics: DashboardMetrics = {
-  materiasCount: 0,
-  frequenciasCount: 0,
-  newTestsCount: 0,
+  resolvedTestsCount: 0,
+  pendingTestsCount: 0,
   dissertativasPendingCount: 0,
-  resolutionPercent: 0,
+  openDoubtsCount: 0,
+  totalStudySeconds: 0,
+  correctCount: 0,
+  wrongCount: 0,
   accuracyPercent: 0,
-  totalActivities: 0,
-  resolvedActivities: 0
+  errorPercent: 0,
+  themePerformance: [],
+  questionPerformance: []
 };
 
-type ProgressConfig = {
-  value: number;
-  label: string;
-  colorClass: string;
-  trackClass: string;
+const stripHtml = (html: string) => {
+  if (!html) return '';
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  return (doc.body.textContent || '').replace(/\s+/g, ' ').trim();
 };
 
-type MetricCardProps = {
+const formatDuration = (totalSeconds: number) => {
+  const safe = Math.max(0, Math.round(totalSeconds || 0));
+  const hours = Math.floor(safe / 3600);
+  const minutes = Math.floor((safe % 3600) / 60);
+  const seconds = safe % 60;
+
+  if (hours > 0) return `${hours}h ${minutes}min`;
+  if (minutes > 0) return `${minutes}min ${seconds}s`;
+  return `${seconds}s`;
+};
+
+const StatCard: React.FC<{
   title: string;
   value: string;
   subtitle: string;
   icon: React.ReactNode;
-  iconClassName: string;
+  tone: 'blue' | 'green' | 'red' | 'amber';
   loading: boolean;
-  progress?: ProgressConfig;
+}> = ({ title, value, subtitle, icon, tone, loading }) => {
+  const toneClass =
+    tone === 'green'
+      ? 'bg-green-50 text-green-600'
+      : tone === 'red'
+        ? 'bg-red-50 text-red-600'
+        : tone === 'amber'
+          ? 'bg-amber-50 text-amber-600'
+          : 'bg-blue-50 text-blue-600';
+
+  return (
+    <article className="bg-white p-6 rounded-2xl shadow-xl shadow-gray-200/20">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <p className="text-[#A3AED0] text-sm font-bold mb-1">{title}</p>
+          {loading ? (
+            <div className="h-8 w-24 bg-gray-100 animate-pulse rounded" aria-hidden="true" />
+          ) : (
+            <p className="text-3xl font-bold text-[#1B2559]">{value}</p>
+          )}
+        </div>
+        <div className={`p-3 rounded-xl ${toneClass}`} aria-hidden="true">
+          {icon}
+        </div>
+      </div>
+      {loading ? (
+        <div className="h-4 w-40 bg-gray-100 animate-pulse rounded mt-4" aria-hidden="true" />
+      ) : (
+        <p className="mt-4 text-sm text-[#A3AED0]">{subtitle}</p>
+      )}
+    </article>
+  );
 };
-
-const MetricCard: React.FC<MetricCardProps> = ({
-  title,
-  value,
-  subtitle,
-  icon,
-  iconClassName,
-  loading,
-  progress
-}) => (
-  <article
-    className="bg-white p-6 rounded-2xl shadow-xl shadow-gray-200/20 transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl"
-    aria-label={title}
-  >
-    <div className="flex items-start justify-between gap-4">
-      <div className="min-w-0">
-        <p className="text-[#A3AED0] text-sm font-bold mb-1">{title}</p>
-        {loading ? (
-          <div className="h-8 w-24 bg-gray-100 animate-pulse rounded" aria-hidden="true" />
-        ) : (
-          <p className="text-3xl font-bold text-[#1B2559]">{value}</p>
-        )}
-      </div>
-      <div className={iconClassName} aria-hidden="true">
-        {icon}
-      </div>
-    </div>
-
-    {loading ? (
-      <div className="h-4 w-40 bg-gray-100 animate-pulse rounded mt-4" aria-hidden="true" />
-    ) : (
-      <p className="mt-4 text-sm text-[#A3AED0]">{subtitle}</p>
-    )}
-
-    {progress && (
-      <div className="mt-4">
-        {loading ? (
-          <div className="h-2.5 w-full bg-gray-100 animate-pulse rounded-full" aria-hidden="true" />
-        ) : (
-          <div
-            className={`h-2.5 rounded-full ${progress.trackClass}`}
-            role="progressbar"
-            aria-label={progress.label}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={progress.value}
-          >
-            <div
-              className={`h-full rounded-full ${progress.colorClass} transition-all duration-500`}
-              style={{ width: `${Math.min(100, Math.max(0, progress.value))}%` }}
-            />
-          </div>
-        )}
-      </div>
-    )}
-  </article>
-);
 
 export const StudentDashboard: React.FC = () => {
   const navigate = useNavigate();
   const [userName, setUserName] = useState<string>('Aluno');
-  const [userInitials, setUserInitials] = useState<string>('AL');
-  const [metrics, setMetrics] = useState<DashboardMetrics>(initialMetrics);
   const [loading, setLoading] = useState(true);
+  const [metrics, setMetrics] = useState<DashboardMetrics>(initialMetrics);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [isParent, setIsParent] = useState(false);
   const [linkedAlunos, setLinkedAlunos] = useState<LinkedAluno[]>([]);
   const [selectedAlunoId, setSelectedAlunoId] = useState('');
+  const [periodPreset, setPeriodPreset] = useState<'all' | '7' | '30' | '90' | 'custom'>('all');
+  const [periodStart, setPeriodStart] = useState('');
+  const [periodEnd, setPeriodEnd] = useState('');
+
+  useEffect(() => {
+    if (periodPreset === 'all') {
+      setPeriodStart('');
+      setPeriodEnd('');
+      return;
+    }
+    if (periodPreset === 'custom') return;
+
+    const days = Number(periodPreset);
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setDate(endDate.getDate() - days + 1);
+
+    setPeriodStart(startDate.toISOString().slice(0, 10));
+    setPeriodEnd(endDate.toISOString().slice(0, 10));
+  }, [periodPreset]);
 
   const fetchDashboardData = useCallback(async (overrideAlunoId?: string) => {
     try {
@@ -180,7 +216,6 @@ export const StudentDashboard: React.FC = () => {
 
       let targetAlunoId = user.id;
       let targetNome = userData.nome || '';
-      let targetSobrenome = userData.sobrenome || '';
       let targetAlunoEmail = (userData.email as string | null) || user.email || '';
       let targetMaterias = ((userData.materias || userData.idmat || []) as string[]) || [];
       let targetSerie = (userData.idserie as string | null) || null;
@@ -219,7 +254,6 @@ export const StudentDashboard: React.FC = () => {
         if (selectedAluno) {
           targetAlunoId = selectedAluno.id;
           targetNome = selectedAluno.nome || '';
-          targetSobrenome = selectedAluno.sobrenome || '';
           targetAlunoEmail = selectedAluno.email || '';
           targetMaterias = ((selectedAluno.materias || selectedAluno.idmat || []) as string[]) || [];
           targetSerie = selectedAluno.idserie || null;
@@ -230,11 +264,7 @@ export const StudentDashboard: React.FC = () => {
         setSelectedAlunoId('');
       }
 
-      const firstName = targetNome ? targetNome.split(' ')[0] : 'Aluno';
-      const firstInitial = targetNome ? targetNome.charAt(0).toUpperCase() : 'A';
-      const lastInitial = targetSobrenome ? targetSobrenome.charAt(0).toUpperCase() : 'L';
-      setUserName(firstName);
-      setUserInitials(`${firstInitial}${lastInitial}`);
+      setUserName(targetNome ? targetNome.split(' ')[0] : 'Aluno');
 
       const assignmentAlunoIds = new Set<string>([targetAlunoId]);
       if (targetAlunoEmail) {
@@ -247,48 +277,130 @@ export const StudentDashboard: React.FC = () => {
       }
       const targetAssignmentIds = Array.from(assignmentAlunoIds);
 
-      const [materiasRes, testesRes, provasRes, frequenciasRes, enviosRes, destinosRes] = await Promise.all([
-        targetMaterias.length > 0
-          ? supabase.from('tbf_materias').select('id, materia').in('id', targetMaterias)
-          : Promise.resolve({ data: [] as Materia[] }),
+      const [testesRes, provaRows, temasRes, duvidasRes, enviosRes, destinosRes] = await Promise.all([
         supabase
           .from('tbf_testes')
-          .select('id')
+          .select('id, pergunta, idtema, created_at')
           .overlaps('idalunos', targetAssignmentIds),
-        supabase
-          .from('tbf_prova')
-          .select('idteste, acerto')
-          .eq('idaluno', targetAlunoId),
-        supabase
-          .from('tbf_frequencias')
-          .select('id', { count: 'exact', head: true })
-          .eq('aluno_id', targetAlunoId),
-        supabase
-          .from('tbf_questoes_dissertativas_envios')
-          .select('questao_id')
-          .eq('aluno_id', targetAlunoId),
+        fetchProvaRowsByAluno(targetAlunoId),
+        supabase.from('tbf_temas').select('id, nometema'),
+        supabase.from('tbf_duvidas').select('id, resposta, created_at').eq('idaluno', targetAlunoId),
+        supabase.from('tbf_questoes_dissertativas_envios').select('questao_id').eq('aluno_id', targetAlunoId),
         listDissertativaQuestaoIdsByAlunos(targetAssignmentIds)
       ]);
 
-      const materiasCount = (materiasRes.data as Materia[] | null)?.length || 0;
-      const testIds = new Set(((testesRes.data as { id: string }[] | null) || []).map((item) => item.id));
-      const provasData = (provasRes.data as Prova[] | null) || [];
+      const inDateRange = (rawDate?: string | null) => {
+        if (!periodStart && !periodEnd) return true;
+        if (!rawDate) return false;
+        const target = new Date(rawDate);
+        if (Number.isNaN(target.getTime())) return false;
 
-      const answeredTestIds = new Set<string>();
-      const correctByTest = new Map<string, boolean>();
+        if (periodStart) {
+          const start = new Date(`${periodStart}T00:00:00`);
+          if (target < start) return false;
+        }
+        if (periodEnd) {
+          const end = new Date(`${periodEnd}T23:59:59.999`);
+          if (target > end) return false;
+        }
 
-      provasData.forEach((prova) => {
-        if (!testIds.has(prova.idteste)) return;
-        answeredTestIds.add(prova.idteste);
-        if (prova.acerto) correctByTest.set(prova.idteste, true);
-        if (!correctByTest.has(prova.idteste)) correctByTest.set(prova.idteste, false);
+        return true;
+      };
+
+      const testes = (((testesRes.data as TesteResumo[] | null) || []).filter((item) => inDateRange(item.created_at)));
+      const temas = (temasRes.data as Tema[] | null) || [];
+      const duvidas = (((duvidasRes.data as DuvidaRow[] | null) || []).filter((item) => inDateRange(item.created_at)));
+      const testIds = new Set(testes.map((item) => item.id));
+
+      const attemptsByTest = new Map<string, { attempts: number; hasCorrect: boolean; totalSeconds: number }>();
+      for (const prova of provaRows) {
+        if (!inDateRange(prova.realizadoEm)) continue;
+        if (!testIds.has(prova.idteste)) continue;
+        const existing = attemptsByTest.get(prova.idteste);
+        if (existing) {
+          existing.attempts += 1;
+          existing.hasCorrect = existing.hasCorrect || prova.acerto;
+          existing.totalSeconds += prova.tempoSegundos || 0;
+        } else {
+          attemptsByTest.set(prova.idteste, {
+            attempts: 1,
+            hasCorrect: prova.acerto,
+            totalSeconds: prova.tempoSegundos || 0
+          });
+        }
+      }
+
+      const temaMap = new Map(temas.map((tema) => [tema.id, tema.nometema]));
+      const byTheme = new Map<string, ThemePerformance>();
+      const questionPerformance: QuestionPerformance[] = [];
+
+      let resolvedTestsCount = 0;
+      let correctCount = 0;
+      let wrongCount = 0;
+      let totalStudySeconds = 0;
+
+      testes.forEach((teste) => {
+        const attempt = attemptsByTest.get(teste.id);
+        if (!attempt || attempt.attempts === 0) return;
+
+        resolvedTestsCount += 1;
+        totalStudySeconds += attempt.totalSeconds;
+
+        if (attempt.hasCorrect) {
+          correctCount += 1;
+        } else {
+          wrongCount += 1;
+        }
+
+        const temaIds = teste.idtema && teste.idtema.length > 0 ? teste.idtema : ['__sem_tema__'];
+        const themeLabel = temaIds
+          .map((id) => (id === '__sem_tema__' ? 'Sem tema' : temaMap.get(id) || 'Tema'))
+          .join(', ');
+
+        questionPerformance.push({
+          testId: teste.id,
+          preview: stripHtml(teste.pergunta || '').slice(0, 120) || 'Questão sem enunciado',
+          themeLabel,
+          attempts: attempt.attempts,
+          status: attempt.hasCorrect ? 'acerto' : 'erro',
+          totalSeconds: attempt.totalSeconds
+        });
+
+        temaIds.forEach((temaId) => {
+          const name = temaId === '__sem_tema__' ? 'Sem tema' : temaMap.get(temaId) || 'Tema';
+          const current = byTheme.get(temaId) || {
+            themeId: temaId,
+            themeName: name,
+            resolvedCount: 0,
+            correctCount: 0,
+            wrongCount: 0,
+            accuracyPercent: 0,
+            errorPercent: 0,
+            totalSeconds: 0
+          };
+
+          current.resolvedCount += 1;
+          current.totalSeconds += attempt.totalSeconds;
+          if (attempt.hasCorrect) current.correctCount += 1;
+          else current.wrongCount += 1;
+
+          byTheme.set(temaId, current);
+        });
       });
 
-      const totalTests = testIds.size;
-      const answeredTests = answeredTestIds.size;
-      const correctTests = Array.from(answeredTestIds).filter((id) => correctByTest.get(id)).length;
-      const newTestsCount = Math.max(0, totalTests - answeredTests);
-      const accuracyPercent = answeredTests > 0 ? Math.round((correctTests / answeredTests) * 100) : 0;
+      const pendingTestsCount = Math.max(0, testes.length - resolvedTestsCount);
+      const accuracyPercent = resolvedTestsCount > 0 ? Math.round((correctCount / resolvedTestsCount) * 100) : 0;
+      const errorPercent = resolvedTestsCount > 0 ? Math.round((wrongCount / resolvedTestsCount) * 100) : 0;
+
+      const themePerformance = Array.from(byTheme.values())
+        .map((item) => ({
+          ...item,
+          accuracyPercent: item.resolvedCount > 0 ? Math.round((item.correctCount / item.resolvedCount) * 100) : 0,
+          errorPercent: item.resolvedCount > 0 ? Math.round((item.wrongCount / item.resolvedCount) * 100) : 0
+        }))
+        .sort((a, b) => b.resolvedCount - a.resolvedCount || a.themeName.localeCompare(b.themeName));
+
+      questionPerformance.sort((a, b) => b.totalSeconds - a.totalSeconds);
 
       const { questaoIds } = destinosRes;
       const generalDissertativasQuery = supabase.from('tbf_questoes_dissertativas').select('id');
@@ -302,13 +414,17 @@ export const StudentDashboard: React.FC = () => {
       const [generalDissertativasRes, assignedDissertativasRes] = await Promise.all([
         generalDissertativasQuery,
         questaoIds.length > 0
-          ? supabase.from('tbf_questoes_dissertativas').select('id').in('id', questaoIds)
-          : Promise.resolve({ data: [] as { id: string }[] })
+          ? supabase.from('tbf_questoes_dissertativas').select('id, created_at').in('id', questaoIds)
+          : Promise.resolve({ data: [] as { id: string; created_at?: string | null }[] })
       ]);
 
       const totalDissertativaIds = new Set<string>([
-        ...(((generalDissertativasRes.data as { id: string }[] | null) || []).map((item) => item.id)),
-        ...(((assignedDissertativasRes.data as { id: string }[] | null) || []).map((item) => item.id))
+        ...(((generalDissertativasRes.data as { id: string; created_at?: string | null }[] | null) || [])
+          .filter((item) => inDateRange(item.created_at))
+          .map((item) => item.id)),
+        ...(((assignedDissertativasRes.data as { id: string; created_at?: string | null }[] | null) || [])
+          .filter((item) => inDateRange(item.created_at))
+          .map((item) => item.id))
       ]);
 
       const envioQuestaoIds = new Set(
@@ -316,23 +432,22 @@ export const StudentDashboard: React.FC = () => {
           .map((item) => item.questao_id)
           .filter((id): id is string => typeof id === 'string'))
       );
+      const dissertativasPendingCount = Math.max(0, totalDissertativaIds.size - envioQuestaoIds.size);
 
-      const answeredDissertativas = Array.from(totalDissertativaIds).filter((id) => envioQuestaoIds.has(id)).length;
-      const dissertativasPendingCount = Math.max(0, totalDissertativaIds.size - answeredDissertativas);
-
-      const totalActivities = totalTests + totalDissertativaIds.size;
-      const resolvedActivities = answeredTests + answeredDissertativas;
-      const resolutionPercent = totalActivities > 0 ? Math.round((resolvedActivities / totalActivities) * 100) : 0;
+      const openDoubtsCount = duvidas.filter((duvida) => !duvida.resposta || !duvida.resposta.trim()).length;
 
       setMetrics({
-        materiasCount,
-        frequenciasCount: frequenciasRes.count || 0,
-        newTestsCount,
+        resolvedTestsCount,
+        pendingTestsCount,
         dissertativasPendingCount,
-        resolutionPercent,
+        openDoubtsCount,
+        totalStudySeconds,
+        correctCount,
+        wrongCount,
         accuracyPercent,
-        totalActivities,
-        resolvedActivities
+        errorPercent,
+        themePerformance,
+        questionPerformance
       });
     } catch (error) {
       console.error('Erro ao buscar dados do dashboard:', error);
@@ -340,7 +455,7 @@ export const StudentDashboard: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [navigate, selectedAlunoId]);
+  }, [navigate, periodEnd, periodStart, selectedAlunoId]);
 
   useEffect(() => {
     fetchDashboardData();
@@ -363,12 +478,10 @@ export const StudentDashboard: React.FC = () => {
     }
   };
 
-  const showEmptyState =
-    !loading &&
-    metrics.totalActivities === 0 &&
-    metrics.frequenciasCount === 0 &&
-    metrics.materiasCount === 0;
-  const pendingToDoCount = metrics.newTestsCount + metrics.dissertativasPendingCount;
+  const hasPerformanceData = useMemo(
+    () => metrics.resolvedTestsCount > 0 || metrics.questionPerformance.length > 0,
+    [metrics.resolvedTestsCount, metrics.questionPerformance.length]
+  );
 
   return (
     <div className="flex h-screen bg-[#F4F7FE] font-sans text-[#2B3674]">
@@ -397,48 +510,16 @@ export const StudentDashboard: React.FC = () => {
           >
             <Menu size={24} />
           </button>
-
-          <div className="relative w-full max-w-[450px] group hidden md:block">
-            <input
-              type="text"
-              placeholder="Pesquisar..."
-              className="w-full pl-14 pr-4 py-4 bg-white border-none rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#0061FF]/20 text-[#2B3674] placeholder-[#A3AED0] shadow-xl shadow-gray-200/30 transition-all duration-300 group-hover:shadow-gray-200/50"
-              aria-label="Pesquisar"
-            />
-            <div className="absolute left-5 top-1/2 -translate-y-1/2 text-[#A3AED0] group-focus-within:text-[#0061FF] transition-colors">
-              <Search size={20} />
-            </div>
-          </div>
-
-          <div className="flex items-center gap-4 md:gap-6 bg-white p-2 rounded-xl shadow-xl shadow-gray-200/30 px-4 md:px-6">
-            <div className="flex items-center gap-3">
-              <button
-                className="p-2.5 text-[#A3AED0] hover:text-[#0061FF] hover:bg-[#F4F7FE] rounded-lg transition-all relative"
-                aria-label="NotificaÃ§Ãµes"
-              >
-                <Bell size={22} />
-              </button>
-              <button
-                className="p-2.5 text-[#A3AED0] hover:text-[#0061FF] hover:bg-[#F4F7FE] rounded-lg transition-all hidden sm:block"
-                aria-label="Mensagens"
-              >
-                <MessageSquare size={22} />
-              </button>
-              <div className="w-10 h-10 md:w-12 md:h-12 rounded-full overflow-hidden cursor-pointer hover:ring-4 hover:ring-[#0061FF]/10 transition-all ml-2 shadow-md">
-                <img
-                  src={`https://ui-avatars.com/api/?name=${userInitials}&background=0061FF&color=fff&bold=true`}
-                  alt={`Avatar de ${userName}`}
-                  className="w-full h-full object-cover"
-                />
-              </div>
-            </div>
-          </div>
+          <h1 className="text-xl md:text-2xl font-bold text-[#1B2559]">
+            Dashboard do Aluno
+          </h1>
+          <div />
         </header>
 
         <main className="flex-1 overflow-y-auto p-4 md:p-10 pt-0 md:pt-4">
-          <div className="max-w-[1600px] mx-auto">
+          <div className="max-w-[1600px] mx-auto space-y-6">
             {isParent && (
-              <div className="bg-white rounded-2xl p-4 md:p-6 shadow-xl shadow-gray-200/40 border border-gray-100 mb-6">
+              <div className="bg-white rounded-2xl p-4 md:p-6 shadow-xl shadow-gray-200/40 border border-gray-100">
                 <label htmlFor="aluno-vinculado" className="text-sm font-bold text-[#1B2559]">
                   Aluno vinculado
                 </label>
@@ -462,84 +543,232 @@ export const StudentDashboard: React.FC = () => {
               </div>
             )}
 
-            {showEmptyState && (
-              <div className="bg-white rounded-2xl p-6 md:p-8 shadow-xl shadow-gray-200/30 border border-gray-100 mb-6">
-                <p className="text-[#1B2559] font-bold">Ainda nÃ£o hÃ¡ dados suficientes para o painel.</p>
+            <section className="bg-white rounded-2xl p-4 md:p-6 shadow-xl shadow-gray-200/30 border border-gray-100">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div>
+                  <label className="text-xs font-semibold text-gray-500 uppercase">Período</label>
+                  <select
+                    value={periodPreset}
+                    onChange={(e) => setPeriodPreset(e.target.value as 'all' | '7' | '30' | '90' | 'custom')}
+                    className="mt-2 w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-[#4318FF] outline-none"
+                  >
+                    <option value="all">Todo período</option>
+                    <option value="7">Últimos 7 dias</option>
+                    <option value="30">Últimos 30 dias</option>
+                    <option value="90">Últimos 90 dias</option>
+                    <option value="custom">Personalizado</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-500 uppercase">Data início</label>
+                  <input
+                    type="date"
+                    value={periodStart}
+                    onChange={(e) => {
+                      setPeriodPreset('custom');
+                      setPeriodStart(e.target.value);
+                    }}
+                    className="mt-2 w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-[#4318FF] outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-500 uppercase">Data fim</label>
+                  <input
+                    type="date"
+                    value={periodEnd}
+                    onChange={(e) => {
+                      setPeriodPreset('custom');
+                      setPeriodEnd(e.target.value);
+                    }}
+                    className="mt-2 w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-[#4318FF] outline-none"
+                  />
+                </div>
+                <div className="flex items-end">
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => {
+                      setPeriodPreset('all');
+                      setPeriodStart('');
+                      setPeriodEnd('');
+                    }}
+                  >
+                    Limpar filtros
+                  </Button>
+                </div>
+              </div>
+            </section>
+
+            <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <button
+                onClick={() => navigate('/aluno/testes')}
+                className="bg-white rounded-2xl p-5 text-left shadow-xl shadow-gray-200/30 hover:shadow-gray-200/50 transition-all"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="p-3 rounded-xl bg-blue-50 text-blue-600">
+                    <FileCheck size={22} />
+                  </div>
+                  <span className="text-xs font-bold text-[#A3AED0]">
+                    {metrics.pendingTestsCount} pendente(s)
+                  </span>
+                </div>
+                <p className="mt-4 text-lg font-bold text-[#1B2559]">Ir para Testes</p>
+                <p className="text-sm text-[#A3AED0]">Responder e revisar exercícios</p>
+              </button>
+
+              <button
+                onClick={() => navigate('/aluno/questoes-dissertativas')}
+                className="bg-white rounded-2xl p-5 text-left shadow-xl shadow-gray-200/30 hover:shadow-gray-200/50 transition-all"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="p-3 rounded-xl bg-purple-50 text-purple-600">
+                    <FileText size={22} />
+                  </div>
+                  <span className="text-xs font-bold text-[#A3AED0]">
+                    {metrics.dissertativasPendingCount} pendente(s)
+                  </span>
+                </div>
+                <p className="mt-4 text-lg font-bold text-[#1B2559]">Questões Dissertativas</p>
+                <p className="text-sm text-[#A3AED0]">Responder questões abertas enviadas</p>
+              </button>
+
+              <button
+                onClick={() => navigate('/aluno/central-duvidas')}
+                className="bg-white rounded-2xl p-5 text-left shadow-xl shadow-gray-200/30 hover:shadow-gray-200/50 transition-all"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="p-3 rounded-xl bg-amber-50 text-amber-600">
+                    <HelpCircle size={22} />
+                  </div>
+                  <span className="text-xs font-bold text-[#A3AED0]">
+                    {metrics.openDoubtsCount} aberta(s)
+                  </span>
+                </div>
+                <p className="mt-4 text-lg font-bold text-[#1B2559]">Central de Dúvidas</p>
+                <p className="text-sm text-[#A3AED0]">Acompanhar perguntas e respostas</p>
+              </button>
+            </section>
+
+            <section className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+              <StatCard
+                title="Testes resolvidos"
+                value={String(metrics.resolvedTestsCount)}
+                subtitle="Total de exercícios já respondidos"
+                icon={<FileCheck size={22} />}
+                tone="blue"
+                loading={loading}
+              />
+              <StatCard
+                title="Tempo de estudo"
+                value={formatDuration(metrics.totalStudySeconds)}
+                subtitle="Soma de tempo gasto nas questões"
+                icon={<Clock3 size={22} />}
+                tone="amber"
+                loading={loading}
+              />
+              <StatCard
+                title="Acertos"
+                value={`${metrics.correctCount} (${metrics.accuracyPercent}%)`}
+                subtitle="Quantidade e percentual de acerto"
+                icon={<CheckCircle2 size={22} />}
+                tone="green"
+                loading={loading}
+              />
+              <StatCard
+                title="Erros"
+                value={`${metrics.wrongCount} (${metrics.errorPercent}%)`}
+                subtitle="Quantidade e percentual de erro"
+                icon={<XCircle size={22} />}
+                tone="red"
+                loading={loading}
+              />
+            </section>
+
+            {!loading && !hasPerformanceData && (
+              <div className="bg-white rounded-2xl p-6 md:p-8 shadow-xl shadow-gray-200/30 border border-gray-100">
+                <p className="text-[#1B2559] font-bold">Ainda não há desempenho para exibir.</p>
                 <p className="text-[#A3AED0] mt-2 text-sm">
-                  Assim que novas atividades, frequÃªncias ou matÃ©rias forem registradas, os indicadores aparecerÃ£o aqui.
+                  Assim que o aluno resolver testes, os indicadores por tema e tempo por questão aparecerão aqui.
                 </p>
               </div>
             )}
 
-            <section
-              className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
-              aria-label="MÃ©tricas principais da dashboard"
-            >
-              <MetricCard
-                title="MatÃ©rias"
-                value={String(metrics.materiasCount)}
-                subtitle="Total de matÃ©rias ativas"
-                icon={<BookOpen size={24} />}
-                iconClassName="p-3 bg-[#F4F7FE] rounded-xl text-[#0061FF]"
-                loading={loading}
-              />
+            <section className="bg-white rounded-2xl shadow-xl shadow-gray-200/30 border border-gray-100 overflow-hidden">
+              <div className="px-6 py-5 border-b border-gray-100">
+                <h2 className="text-lg font-bold text-[#1B2559]">Desempenho por tema</h2>
+                <p className="text-sm text-[#A3AED0]">
+                  Tema, exercícios resolvidos, percentual de acerto/erro e tempo total.
+                </p>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead>
+                    <tr className="text-xs uppercase tracking-wider text-[#A3AED0] border-b border-gray-100">
+                      <th className="px-6 py-4 font-bold">Tema</th>
+                      <th className="px-6 py-4 font-bold">Resolvidos</th>
+                      <th className="px-6 py-4 font-bold">Acerto</th>
+                      <th className="px-6 py-4 font-bold">Erro</th>
+                      <th className="px-6 py-4 font-bold">Tempo Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {loading ? (
+                      <tr>
+                        <td colSpan={5} className="px-6 py-8 text-sm text-[#A3AED0]">Carregando...</td>
+                      </tr>
+                    ) : metrics.themePerformance.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="px-6 py-8 text-sm text-[#A3AED0]">Nenhum tema com exercícios resolvidos.</td>
+                      </tr>
+                    ) : (
+                      metrics.themePerformance.map((theme) => (
+                        <tr key={theme.themeId} className="border-b border-gray-50 last:border-b-0">
+                          <td className="px-6 py-4 font-semibold text-[#1B2559]">{theme.themeName}</td>
+                          <td className="px-6 py-4 text-[#2B3674]">{theme.resolvedCount}</td>
+                          <td className="px-6 py-4 text-green-600 font-semibold">
+                            {theme.correctCount} ({theme.accuracyPercent}%)
+                          </td>
+                          <td className="px-6 py-4 text-red-600 font-semibold">
+                            {theme.wrongCount} ({theme.errorPercent}%)
+                          </td>
+                          <td className="px-6 py-4 text-[#2B3674]">{formatDuration(theme.totalSeconds)}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </section>
 
-              <MetricCard
-                title="FrequÃªncias"
-                value={String(metrics.frequenciasCount)}
-                subtitle="Total de presenÃ§as registradas"
-                icon={<CalendarCheck size={24} />}
-                iconClassName="p-3 bg-[#E6FBF5] rounded-xl text-[#05CD99]"
-                loading={loading}
-              />
-
-              <MetricCard
-                title="A Fazer"
-                value={String(pendingToDoCount)}
-                subtitle="Testes e dissertativas pendentes"
-                icon={<FileCheck size={24} />}
-                iconClassName="p-3 bg-[#FFF7E8] rounded-xl text-[#FFB547]"
-                loading={loading}
-              />
-
-              <MetricCard
-                title="QuestÃµes dissertativas enviadas e nÃ£o respondidas"
-                value={String(metrics.dissertativasPendingCount)}
-                subtitle="Pendentes de resposta"
-                icon={<FileText size={24} />}
-                iconClassName="p-3 bg-[#FEEFEE] rounded-xl text-[#EE5D50]"
-                loading={loading}
-              />
-
-              <MetricCard
-                title="Percentual de resoluÃ§Ã£o"
-                value={`${metrics.resolutionPercent}%`}
-                subtitle={`${metrics.resolvedActivities} de ${metrics.totalActivities} atividades resolvidas`}
-                icon={<Activity size={24} />}
-                iconClassName="p-3 bg-[#F4F7FE] rounded-xl text-[#4318FF]"
-                loading={loading}
-                progress={{
-                  value: metrics.resolutionPercent,
-                  label: 'Progresso do percentual de resoluÃ§Ã£o',
-                  colorClass: 'bg-[#4318FF]',
-                  trackClass: 'bg-[#E9E3FF]'
-                }}
-              />
-
-              <MetricCard
-                title="Percentual de acerto"
-                value={`${metrics.accuracyPercent}%`}
-                subtitle="Acertos sobre itens jÃ¡ respondidos"
-                icon={<Target size={24} />}
-                iconClassName="p-3 bg-[#E6FBF5] rounded-xl text-[#05CD99]"
-                loading={loading}
-                progress={{
-                  value: metrics.accuracyPercent,
-                  label: 'Progresso do percentual de acerto',
-                  colorClass: 'bg-[#05CD99]',
-                  trackClass: 'bg-[#DBFAF1]'
-                }}
-              />
+            <section className="bg-white rounded-2xl shadow-xl shadow-gray-200/30 border border-gray-100 overflow-hidden">
+              <div className="px-6 py-5 border-b border-gray-100">
+                <h2 className="text-lg font-bold text-[#1B2559]">Tempo gasto por questão</h2>
+                <p className="text-sm text-[#A3AED0]">Total de tempo contabilizado em cada questão respondida.</p>
+              </div>
+              <div className="divide-y divide-gray-100">
+                {loading ? (
+                  <div className="px-6 py-8 text-sm text-[#A3AED0]">Carregando...</div>
+                ) : metrics.questionPerformance.length === 0 ? (
+                  <div className="px-6 py-8 text-sm text-[#A3AED0]">Nenhuma questão resolvida até o momento.</div>
+                ) : (
+                  metrics.questionPerformance.map((question) => (
+                    <div key={question.testId} className="px-6 py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-semibold text-[#1B2559] truncate">{question.preview}</p>
+                        <p className="text-xs text-[#A3AED0] mt-1">
+                          {question.themeLabel} • Tentativas: {question.attempts}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <span className={`text-xs font-bold px-2 py-1 rounded-lg ${question.status === 'acerto' ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'}`}>
+                          {question.status === 'acerto' ? 'Acerto' : 'Erro'}
+                        </span>
+                        <span className="text-sm font-semibold text-[#2B3674]">{formatDuration(question.totalSeconds)}</span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
             </section>
           </div>
         </main>
@@ -549,4 +778,3 @@ export const StudentDashboard: React.FC = () => {
 };
 
 export default StudentDashboard;
-
