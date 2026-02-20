@@ -460,37 +460,66 @@ const Usuarios: React.FC = () => {
     setQuickCreateError(null);
     setIsQuickCreating(true);
     try {
-      const { data: created, error } = await supabase
+      const quickUserId = crypto.randomUUID();
+      const nomeFormatado = capitalizeWords(nome);
+      const sobrenomeFormatado = capitalizeWords(sobrenome);
+
+      const { error } = await supabase
         .from('tbf_controle_user')
         .insert({
-          id: crypto.randomUUID(),
-          nome: capitalizeWords(nome),
-          sobrenome: capitalizeWords(sobrenome),
+          id: quickUserId,
+          nome: nomeFormatado,
+          sobrenome: sobrenomeFormatado,
           telefone,
           email: '',
           role: 'aluno',
           signature: 'inativo',
           emailaluno: '',
           emailpai: ''
-        })
-        .select('id, nome, sobrenome, email')
-        .single();
+        });
 
-      if (error || !created) {
-        throw error || new Error('Erro ao criar cadastro rápido.');
+      if (error) {
+        throw error;
       }
 
-      await logAudit('create_user_quick', created.id, {
-        nome: `${created.nome} ${created.sobrenome || ''}`.trim()
+      await logAudit('create_user_quick', quickUserId, {
+        nome: `${nomeFormatado} ${sobrenomeFormatado || ''}`.trim()
       });
 
       setShowQuickCreateModal(false);
       setQuickCreateForm({ nome: '', sobrenome: '', telefone: '' });
       fetchAllUsers();
     } catch (error) {
-      console.error('Error creating quick user:', error);
-      const message = error instanceof Error ? error.message : 'Erro ao criar cadastro rápido.';
-      setQuickCreateError(message);
+      const supabaseError = error as {
+        message?: string;
+        code?: string;
+        details?: string;
+        hint?: string;
+        status?: number;
+        statusCode?: number;
+      };
+
+      console.error('Error creating quick user (Supabase):', {
+        message: supabaseError?.message || null,
+        code: supabaseError?.code || null,
+        details: supabaseError?.details || null,
+        hint: supabaseError?.hint || null,
+        status: supabaseError?.status || supabaseError?.statusCode || null,
+        raw: error
+      });
+
+      const parts = [
+        supabaseError?.message,
+        supabaseError?.code ? `code: ${supabaseError.code}` : null,
+        supabaseError?.details ? `details: ${supabaseError.details}` : null,
+        supabaseError?.hint ? `hint: ${supabaseError.hint}` : null
+      ].filter(Boolean);
+
+      setQuickCreateError(
+        parts.length > 0
+          ? `Erro ao criar cadastro rápido. ${parts.join(' | ')}`
+          : 'Erro ao criar cadastro rápido.'
+      );
     } finally {
       setIsQuickCreating(false);
     }
