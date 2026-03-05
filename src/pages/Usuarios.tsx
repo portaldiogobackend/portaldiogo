@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useState, useEffect, useMemo } from 'react';
+import React, { useCallback, useState, useEffect, useMemo } from 'react';
 import { Users, ChevronLeft, Edit, Trash2, Plus, Mail, Shield, Signature, Search, ChevronUp, ChevronDown, Filter, X, Menu } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Sidebar } from '../components/layout/Sidebar';
@@ -283,7 +283,7 @@ const Usuarios: React.FC = () => {
       setUserToEdit(null);
     } catch (error) {
       console.error('Error updating user:', error);
-      alert('Erro ao atualizar usuÃ¡rio.');
+      alert('Erro ao atualizar usuário.');
     } finally {
       setIsSaving(false);
     }
@@ -584,10 +584,10 @@ const Usuarios: React.FC = () => {
   };
 
   const roleLabel = (role: string) => {
-    if (role === 'pai') return 'Pai/MÃ£e';
+    if (role === 'pai') return 'Pai/Mãe';
     if (role === 'aluno') return 'Aluno';
     if (role === 'admin') return 'Admin';
-    return role || 'UsuÃ¡rio';
+    return role || 'Usuário';
   };
 
   const accessLabel = (user: UserProfile) => {
@@ -625,7 +625,7 @@ const Usuarios: React.FC = () => {
       setUserToDelete(null);
     } catch (error) {
       console.error('Error deleting user:', error);
-      alert('Erro ao excluir usuÃ¡rio. Verifique as permissÃµes.');
+      alert('Erro ao excluir usuário. Verifique as permissões.');
     } finally {
       setIsDeleting(null);
     }
@@ -791,12 +791,12 @@ const Usuarios: React.FC = () => {
       <Modal
         isOpen={showDeleteModal}
         onClose={() => setShowDeleteModal(false)}
-        title="Confirmar ExclusÃ£o"
+        title="Confirmar Exclusão"
       >
         <div className="space-y-4">
           <p className="text-[#A3AED0]">
-            Tem certeza que deseja excluir o usuÃ¡rio <span className="font-bold text-[#1B2559]">{userToDelete?.nome} {userToDelete?.sobrenome}</span>?
-            Esta aÃ§Ã£o nÃ£o pode ser desfeita e removerÃ¡ o acesso do usuÃ¡rio ao sistema.
+            Tem certeza que deseja excluir o usuário <span className="font-bold text-[#1B2559]">{userToDelete?.nome} {userToDelete?.sobrenome}</span>?
+            Esta ação não pode ser desfeita e removerá o acesso do usuário ao sistema.
           </p>
           <div className="flex justify-end gap-3 mt-6">
             <Button variant="ghost" onClick={() => setShowDeleteModal(false)}>
@@ -807,7 +807,7 @@ const Usuarios: React.FC = () => {
               onClick={confirmDelete}
               isLoading={isDeleting === userToDelete?.id}
             >
-              Excluir UsuÃ¡rio
+              Excluir Usuário
             </Button>
           </div>
         </div>
@@ -816,7 +816,7 @@ const Usuarios: React.FC = () => {
       <Modal
         isOpen={showEditModal}
         onClose={() => setShowEditModal(false)}
-        title="Editar UsuÃ¡rio"
+        title="Editar Usuário"
       >
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
@@ -841,7 +841,7 @@ const Usuarios: React.FC = () => {
           </div>
           
           <div className="space-y-2">
-            <label className="text-sm font-bold text-[#1B2559]">E-mail (NÃ£o editÃ¡vel)</label>
+            <label className="text-sm font-bold text-[#1B2559]">E-mail (Não editável)</label>
             <input 
               type="text"
               value={userToEdit?.email || ''}
@@ -878,7 +878,7 @@ const Usuarios: React.FC = () => {
                 className="w-full px-4 py-2 bg-[#F4F7FE] border-none rounded-xl text-[#2B3674] focus:ring-2 focus:ring-[#0061FF]/20 outline-none appearance-none"
               >
                 <option value="admin">Admin</option>
-                <option value="pai">Pai/MÃ£e</option>
+                <option value="pai">Pai/Mãe</option>
                 <option value="aluno">Aluno</option>
               </select>
             </div>
@@ -927,10 +927,10 @@ const Usuarios: React.FC = () => {
 
           {editForm.role === 'aluno' && (
              <div className="space-y-2 mt-2 pt-2 border-t border-gray-100">
-               <label className="text-sm font-bold text-[#1B2559]">MatÃ©rias do Aluno</label>
+               <label className="text-sm font-bold text-[#1B2559]">Matérias do Aluno</label>
                <div className="bg-[#F4F7FE] p-4 rounded-xl max-h-48 overflow-y-auto">
                   {materias.length === 0 ? (
-                    <p className="text-sm text-[#A3AED0]">Nenhuma matÃ©ria cadastrada.</p>
+                    <p className="text-sm text-[#A3AED0]">Nenhuma matéria cadastrada.</p>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                       {materias.map((materia) => (
@@ -951,13 +951,13 @@ const Usuarios: React.FC = () => {
           )}
 
           <div className="space-y-2">
-            <label className="text-sm font-bold text-[#1B2559]">SÃ©rie</label>
+            <label className="text-sm font-bold text-[#1B2559]">Série</label>
             <select
               value={editForm.serie}
               onChange={(e) => setEditForm({ ...editForm, serie: e.target.value })}
               className="w-full px-4 py-2 bg-[#F4F7FE] border-none rounded-xl text-[#2B3674] focus:ring-2 focus:ring-[#0061FF]/20 outline-none appearance-none"
             >
-              <option value="">Selecione uma sÃ©rie</option>
+              <option value="">Selecione uma série</option>
               {series.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.serie}
@@ -975,7 +975,7 @@ const Usuarios: React.FC = () => {
               onClick={handleEditSave}
               isLoading={isSaving}
             >
-              Salvar AlteraÃ§Ãµes
+              Salvar Alterações
             </Button>
           </div>
         </div>
@@ -1107,7 +1107,7 @@ const Usuarios: React.FC = () => {
               className="w-full px-4 py-2 bg-[#F4F7FE] border-none rounded-xl text-[#2B3674] focus:ring-2 focus:ring-[#0061FF]/20 outline-none appearance-none"
             >
               <option value="admin">Admin</option>
-              <option value="pai">Pai/MÃ£e</option>
+              <option value="pai">Pai/Mãe</option>
               <option value="aluno">Aluno</option>
             </select>
           </div>
@@ -1170,7 +1170,7 @@ const Usuarios: React.FC = () => {
               Cancelar
             </Button>
             <Button variant="primary" onClick={handleCreateSave} isLoading={isCreating}>
-              Criar UsuÃ¡rio
+              Criar Usuário
             </Button>
           </div>
         </div>
@@ -1195,7 +1195,7 @@ const Usuarios: React.FC = () => {
             </button>
           </div>
           
-          <h1 className="text-xl md:text-2xl font-bold text-[#1B2559] truncate">Gerenciamento de UsuÃ¡rios</h1>
+          <h1 className="text-xl md:text-2xl font-bold text-[#1B2559] truncate">Gerenciamento de Usuários</h1>
           <div className="hidden md:flex items-center gap-2">
             <Button variant="ghost" onClick={openQuickCreateModal}>
               <Plus size={16} className="mr-2" />
@@ -1218,8 +1218,8 @@ const Usuarios: React.FC = () => {
                       <Users size={24} />
                     </div>
                     <div>
-                      <h2 className="text-xl font-bold text-[#1B2559]">Lista de UsuÃ¡rios</h2>
-                      <p className="text-sm text-[#A3AED0]">Gerencie os acessos e permissÃµes dos usuÃ¡rios</p>
+                      <h2 className="text-xl font-bold text-[#1B2559]">Lista de Usuários</h2>
+                      <p className="text-sm text-[#A3AED0]">Gerencie os acessos e permissões dos usuários</p>
                     </div>
                   </div>
 
@@ -1264,7 +1264,7 @@ const Usuarios: React.FC = () => {
                     >
                       <option value="all">Todos os Cargos</option>
                       <option value="admin">Admin</option>
-                      <option value="pai">Pai/MÃ£e</option>
+                      <option value="pai">Pai/Mãe</option>
                       <option value="aluno">Aluno</option>
                     </select>
                   </div>
@@ -1341,7 +1341,7 @@ const Usuarios: React.FC = () => {
                         onClick={() => handleSort('nome')}
                       >
                         <div className="flex items-center gap-2">
-                          UsuÃ¡rio
+                          Usuário
                           <div className={cn(
                             "flex flex-col opacity-0 group-hover:opacity-100 transition-opacity",
                             sortConfig.key === 'nome' && "opacity-100"
@@ -1397,9 +1397,9 @@ const Usuarios: React.FC = () => {
                           </div>
                         </div>
                       </th>
-                      <th className="px-8 py-6 font-semibold">MatÃ©rias</th>
-                      <th className="px-8 py-6 font-semibold">SÃ©rie</th>
-                      <th className="px-8 py-6 font-semibold text-right">AÃ§Ãµes</th>
+                      <th className="px-8 py-6 font-semibold">Matérias</th>
+                      <th className="px-8 py-6 font-semibold">Série</th>
+                      <th className="px-8 py-6 font-semibold text-right">Ações</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
@@ -1408,14 +1408,14 @@ const Usuarios: React.FC = () => {
                         <td colSpan={8} className="px-8 py-20 text-center">
                           <div className="flex flex-col items-center gap-3">
                             <Spinner size="lg" />
-                            <p className="text-[#A3AED0] font-medium">Carregando usuÃ¡rios...</p>
+                            <p className="text-[#A3AED0] font-medium">Carregando usuários...</p>
                           </div>
                         </td>
                       </tr>
                     ) : sortedUsers.length === 0 ? (
                       <tr>
                         <td colSpan={8} className="px-8 py-20 text-center text-[#A3AED0]">
-                          Nenhum usuÃ¡rio encontrado com os filtros selecionados.
+                          Nenhum usuário encontrado com os filtros selecionados.
                         </td>
                       </tr>
                     ) : (
@@ -1508,7 +1508,7 @@ const Usuarios: React.FC = () => {
               {users.length > 0 && (
                 <div className="p-8 border-t border-gray-100 flex justify-between items-center bg-gray-50/30">
                   <p className="text-sm text-[#A3AED0] font-medium">
-                    Mostrando <span className="text-[#1B2559] font-bold">{indexOfFirstUser + 1}</span> a <span className="text-[#1B2559] font-bold">{Math.min(indexOfLastUser, users.length)}</span> de <span className="text-[#1B2559] font-bold">{users.length}</span> usuÃ¡rios
+                    Mostrando <span className="text-[#1B2559] font-bold">{indexOfFirstUser + 1}</span> a <span className="text-[#1B2559] font-bold">{Math.min(indexOfLastUser, users.length)}</span> de <span className="text-[#1B2559] font-bold">{users.length}</span> usuários
                   </p>
                   <div className="flex gap-2">
                     <Button 
@@ -1541,7 +1541,7 @@ const Usuarios: React.FC = () => {
                       disabled={currentPage === totalPages}
                       className="text-[#A3AED0] hover:text-[#0061FF]"
                     >
-                      PrÃ³ximo
+                      Próximo
                     </Button>
                   </div>
                 </div>

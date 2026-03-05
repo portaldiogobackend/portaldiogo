@@ -44,6 +44,7 @@ interface Teste {
   idseries: string[];
   idtema: string[];
   idalunos: string[];
+  lista?: string | null;
   pergunta: string;
   alternativa: string;
   resposta: number;
@@ -64,12 +65,12 @@ type SelectItem = {
 const SERIES_ORDER = [
   'Quinto Ano Fundamental',
   'Sexto Ano Fundamental',
-  'SÃ©timo Ano Fundamental',
+  'Sétimo Ano Fundamental',
   'Oitavo Ano Fundamental',
   'Nono Ano Fundamental',
-  'Primeiro Ano Ensino MÃ©dio',
-  'Segundo Ano Ensino MÃ©dio',
-  'Terceiro Ano Ensino MÃ©dio',
+  'Primeiro Ano Ensino Médio',
+  'Segundo Ano Ensino Médio',
+  'Terceiro Ano Ensino Médio',
   'Outros'
 ];
 
@@ -124,6 +125,7 @@ export default function AdminTestes() {
   const [reportFilterMateria, setReportFilterMateria] = useState<string>('');
   const [reportFilterTema, setReportFilterTema] = useState<string>('');
   const [reportFilterSerie, setReportFilterSerie] = useState<string>('');
+  const [reportFilterLista, setReportFilterLista] = useState<string>('');
   const [reportSearchTerm, setReportSearchTerm] = useState<string>('');
   const [reportSortConfig, setReportSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
   const [selectedTesteIds, setSelectedTesteIds] = useState<string[]>([]);
@@ -151,6 +153,7 @@ export default function AdminTestes() {
     idseries: [] as string[],
     idtema: [] as string[],
     idalunos: [] as string[],
+    lista: '',
     pergunta: '',
     alternativas: ['', '', '', ''] as string[],
     resposta: 1,
@@ -162,7 +165,8 @@ export default function AdminTestes() {
     idmat: [] as string[],
     idseries: [] as string[],
     idtema: [] as string[],
-    idalunos: [] as string[]
+    idalunos: [] as string[],
+    lista: ''
   });
 
   // Tema Form state
@@ -367,12 +371,23 @@ export default function AdminTestes() {
   }, [materias, series, temas]);
 
   // Report filters logic
-  const hasActiveReportFilters = reportFilterMateria || reportFilterTema || reportFilterSerie || reportSearchTerm;
+  const listaOptions = useMemo(() => {
+    return Array.from(
+      new Set(
+        testes
+          .map((teste) => (typeof teste.lista === 'string' ? teste.lista.trim() : ''))
+          .filter((value) => value !== '')
+      )
+    ).sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' }));
+  }, [testes]);
+
+  const hasActiveReportFilters = reportFilterMateria || reportFilterTema || reportFilterSerie || reportFilterLista || reportSearchTerm;
 
   const clearReportFilters = () => {
     setReportFilterMateria('');
     setReportFilterTema('');
     setReportFilterSerie('');
+    setReportFilterLista('');
     setReportSearchTerm('');
     setReportSortConfig(null);
   };
@@ -400,10 +415,14 @@ export default function AdminTestes() {
     if (reportFilterSerie) {
       result = result.filter(teste => teste.idseries?.includes(reportFilterSerie));
     }
+    if (reportFilterLista) {
+      result = result.filter(teste => (teste.lista || '').trim() === reportFilterLista);
+    }
     if (reportSearchTerm) {
       const searchLower = reportSearchTerm.toLowerCase();
       result = result.filter(teste => 
         stripHtml(teste.pergunta || '').toLowerCase().includes(searchLower)
+        || (teste.lista || '').toLowerCase().includes(searchLower)
       );
     }
 
@@ -431,7 +450,7 @@ export default function AdminTestes() {
     }
 
     return result;
-  }, [testes, reportFilterMateria, reportFilterTema, reportFilterSerie, reportSearchTerm, reportSortConfig, getTesteNamesForSort]);
+  }, [testes, reportFilterMateria, reportFilterTema, reportFilterSerie, reportFilterLista, reportSearchTerm, reportSortConfig, getTesteNamesForSort]);
 
   const visibleTesteIds = useMemo(() => filteredTestesReport.map(teste => teste.id), [filteredTestesReport]);
   const allVisibleSelected = visibleTesteIds.length > 0 && visibleTesteIds.every(id => selectedTesteIds.includes(id));
@@ -462,7 +481,7 @@ export default function AdminTestes() {
       return;
     }
     if (alunos.length === 0) {
-      showToast('NÃ£o hÃ¡ alunos com acesso elegÃ­veis para receber testes.', 'error');
+      showToast('Não há alunos com acesso elegíveis para receber testes.', 'error');
       return;
     }
     if (selectedTesteIds.length === 0) {
@@ -512,6 +531,7 @@ export default function AdminTestes() {
       idseries: [],
       idtema: [],
       idalunos: [],
+      lista: '',
       pergunta: '',
       alternativas: ['', '', '', ''],
       resposta: 1,
@@ -528,6 +548,7 @@ export default function AdminTestes() {
       idseries: [],
       idtema: [],
       idalunos: [],
+      lista: '',
       pergunta: '',
       alternativas: ['', '', '', ''],
       resposta: 1,
@@ -561,7 +582,8 @@ export default function AdminTestes() {
       idmat: [],
       idseries: [],
       idtema: [],
-      idalunos: []
+      idalunos: [],
+      lista: ''
     });
     setMassiveFile(null);
     setImportLog(null);
@@ -574,7 +596,8 @@ export default function AdminTestes() {
       idmat: [],
       idseries: [],
       idtema: [],
-      idalunos: []
+      idalunos: [],
+      lista: ''
     });
     setMassiveFile(null);
     setImportLog(null);
@@ -609,7 +632,7 @@ export default function AdminTestes() {
       const allowedExtensions = ['.txt', '.doc', '.docx', '.pdf'];
 
       if (!allowedExtensions.includes(extension)) {
-        showToast('Formato invÃ¡lido. Use .txt, .doc, .docx ou .pdf.', 'error');
+        showToast('Formato inválido. Use .txt, .doc, .docx ou .pdf.', 'error');
         e.target.value = '';
         return;
       }
@@ -628,11 +651,11 @@ export default function AdminTestes() {
   const handleMassiveSubmit = async () => {
     // Validation
     if (massiveFormData.idmat.length === 0) {
-      showToast('Selecione pelo menos uma matÃ©ria.', 'error');
+      showToast('Selecione pelo menos uma matéria.', 'error');
       return;
     }
     if (massiveFormData.idseries.length === 0) {
-      showToast('Selecione pelo menos uma sÃ©rie.', 'error');
+      showToast('Selecione pelo menos uma série.', 'error');
       return;
     }
     if (!massiveFile) {
@@ -647,7 +670,7 @@ export default function AdminTestes() {
     reader.onload = async (e) => {
       const text = e.target?.result as string;
       if (!text) {
-        showToast('Arquivo vazio ou invÃ¡lido.', 'error');
+        showToast('Arquivo vazio ou inválido.', 'error');
         setImporting(false);
         return;
       }
@@ -666,7 +689,7 @@ export default function AdminTestes() {
         const parts = line.split('|');
 
         if (parts.length < 4) {
-          errors.push(`Linha ${i + 1}: Formato invÃ¡lido. Esperado 4 colunas.`);
+          errors.push(`Linha ${i + 1}: Formato inválido. Esperado 4 colunas.`);
           continue;
         }
 
@@ -676,13 +699,13 @@ export default function AdminTestes() {
         const justificativa = parts.slice(3).join('|').trim();
 
         if (!pergunta || !alternativas || !respostaStr) {
-          errors.push(`Linha ${i + 1}: Campos obrigatÃ³rios faltando.`);
+          errors.push(`Linha ${i + 1}: Campos obrigatórios faltando.`);
           continue;
         }
 
         const normalizedQuestion = stripHtml(pergunta).toLowerCase().replace(/\s+/g, ' ').trim();
         if (!normalizedQuestion) {
-          errors.push(`Linha ${i + 1}: Pergunta invÃ¡lida ou vazia apÃ³s limpeza.`);
+          errors.push(`Linha ${i + 1}: Pergunta inválida ou vazia após limpeza.`);
           continue;
         }
         if (questionsSeen.has(normalizedQuestion)) {
@@ -693,13 +716,13 @@ export default function AdminTestes() {
 
         const resposta = parseInt(respostaStr);
         if (isNaN(resposta) || resposta < 1 || resposta > 10) {
-           errors.push(`Linha ${i + 1}: Resposta deve ser um nÃºmero entre 1 e 10.`);
+           errors.push(`Linha ${i + 1}: Resposta deve ser um número entre 1 e 10.`);
            continue;
         }
 
         const alts = alternativas.split(';').map(a => a.trim()).filter(a => a !== '');
         if (alts.length < 2) {
-          errors.push(`Linha ${i + 1}: MÃ­nimo de 2 alternativas necessÃ¡rias.`);
+          errors.push(`Linha ${i + 1}: Mínimo de 2 alternativas necessárias.`);
           continue;
         }
         if (resposta > alts.length) {
@@ -707,7 +730,7 @@ export default function AdminTestes() {
           continue;
         }
         if (!stripHtml(justificativa).trim()) {
-          errors.push(`Linha ${i + 1}: Justificativa Ã© obrigatÃ³ria.`);
+          errors.push(`Linha ${i + 1}: Justificativa é obrigatória.`);
           continue;
         }
 
@@ -720,6 +743,7 @@ export default function AdminTestes() {
               idseries: massiveFormData.idseries,
               idtema: massiveFormData.idtema,
               idalunos: massiveFormData.idalunos,
+              lista: massiveFormData.lista.trim() || null,
               pergunta,
               alternativa: alternativas,
               resposta,
@@ -764,11 +788,11 @@ export default function AdminTestes() {
       return;
     }
     if (temaFormData.idmat.length === 0) {
-      showToast('Selecione pelo menos uma matÃ©ria.', 'error');
+      showToast('Selecione pelo menos uma matéria.', 'error');
       return;
     }
     if (temaFormData.idseries.length === 0) {
-      showToast('Selecione pelo menos uma sÃ©rie.', 'error');
+      showToast('Selecione pelo menos uma série.', 'error');
       return;
     }
 
@@ -926,6 +950,7 @@ export default function AdminTestes() {
       idseries: teste.idseries || [],
       idtema: teste.idtema || [],
       idalunos: teste.idalunos || [],
+      lista: teste.lista || '',
       pergunta: teste.pergunta,
       alternativas: teste.alternativa ? teste.alternativa.split(';') : ['', '', '', ''],
       resposta: teste.resposta,
@@ -945,7 +970,7 @@ export default function AdminTestes() {
 
       if (error) throw error;
 
-      showToast('Teste excluÃ­do com sucesso!', 'success');
+      showToast('Teste excluído com sucesso!', 'success');
       setTestes(prev => prev.filter(t => t.id !== id));
     } catch (error) {
       console.error('Error deleting test:', error);
@@ -970,7 +995,7 @@ export default function AdminTestes() {
         : [];
 
     if (targetAlunoIds.length === 0) {
-      showToast('Selecione um aluno ou uma sÃ©rie com alunos.', 'error');
+      showToast('Selecione um aluno ou uma série com alunos.', 'error');
       return;
     }
 
@@ -1036,11 +1061,11 @@ export default function AdminTestes() {
   const handleSave = async () => {
     // Validation
     if (formData.idmat.length === 0) {
-      showToast('Selecione pelo menos uma matÃ©ria.', 'error');
+      showToast('Selecione pelo menos uma matéria.', 'error');
       return;
     }
     if (formData.idseries.length === 0) {
-      showToast('Selecione pelo menos uma sÃ©rie.', 'error');
+      showToast('Selecione pelo menos uma série.', 'error');
       return;
     }
     if (!stripHtml(formData.pergunta).trim()) {
@@ -1071,6 +1096,7 @@ export default function AdminTestes() {
         idseries: formData.idseries,
         idtema: formData.idtema,
         idalunos: formData.idalunos,
+        lista: formData.lista.trim() || null,
         pergunta: formData.pergunta,
         alternativa: alternativaString,
         resposta: formData.resposta,
@@ -1155,7 +1181,7 @@ export default function AdminTestes() {
         </div>
         <div className={`border border-gray-200 rounded-xl p-4 ${maxHeight} overflow-y-auto space-y-2 bg-gray-50`}>
           {items.length === 0 ? (
-             <p className="text-sm text-gray-400">Nenhum item disponÃ­vel</p>
+             <p className="text-sm text-gray-400">Nenhum item disponível</p>
           ) : (
             items.map(item => (
               <div key={item.id} className="flex items-center gap-2">
@@ -1241,13 +1267,13 @@ export default function AdminTestes() {
           <div className="max-w-[1600px] mx-auto space-y-6">
             <div className="bg-white rounded-3xl shadow-xl shadow-gray-200/40 overflow-hidden border-none p-8">
               <h1 className="text-2xl font-bold mb-4">Painel Admin de Testes</h1>
-              <p className="text-gray-500">Use o botÃ£o "Cadastrar Testes" para adicionar novos questionÃ¡rios de mÃºltipla escolha.</p>
+              <p className="text-gray-500">Use o botão "Cadastrar Testes" para adicionar novos questionários de múltipla escolha.</p>
             </div>
 
-            {/* RelatÃ³rio de Testes */}
+            {/* Relatório de Testes */}
             <div className="bg-white rounded-3xl shadow-xl shadow-gray-200/40 overflow-hidden border-none p-8">
               <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-bold text-[#1B2559]">RelatÃ³rio de Testes Cadastrados</h2>
+                <h2 className="text-xl font-bold text-[#1B2559]">Relatório de Testes Cadastrados</h2>
                 <div className="flex items-center gap-4">
                   <span className="text-sm font-medium text-gray-500">{filteredTestesReport.length} de {testes.length} teste(s)</span>
                   <span className="text-sm font-medium text-gray-500">{selectedTesteIds.length} selecionado(s)</span>
@@ -1277,14 +1303,14 @@ export default function AdminTestes() {
                     />
                   </div>
 
-                  {/* MatÃ©ria Filter */}
+                  {/* Matéria Filter */}
                   <div className="relative">
                     <select
                       value={reportFilterMateria}
                       onChange={(e) => setReportFilterMateria(e.target.value)}
                       className="appearance-none pl-4 pr-10 py-2 rounded-lg bg-white border border-gray-200 text-sm focus:ring-2 focus:ring-[#4318FF] focus:border-transparent cursor-pointer min-w-[160px]"
                     >
-                      <option value="">Todas MatÃ©rias</option>
+                      <option value="">Todas Matérias</option>
                       {materias.map(mat => (
                         <option key={mat.id} value={mat.id}>{mat.materia}</option>
                       ))}
@@ -1307,16 +1333,31 @@ export default function AdminTestes() {
                     <ArrowUpDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                   </div>
 
-                  {/* SÃ©rie Filter */}
+                  {/* Série Filter */}
                   <div className="relative">
                     <select
                       value={reportFilterSerie}
                       onChange={(e) => setReportFilterSerie(e.target.value)}
                       className="appearance-none pl-4 pr-10 py-2 rounded-lg bg-white border border-gray-200 text-sm focus:ring-2 focus:ring-[#4318FF] focus:border-transparent cursor-pointer min-w-[180px]"
                     >
-                      <option value="">Todas SÃ©ries</option>
+                      <option value="">Todas Séries</option>
                       {series.map(ser => (
                         <option key={ser.id} value={ser.id}>{ser.serie}</option>
+                      ))}
+                    </select>
+                    <ArrowUpDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                  </div>
+
+                  {/* Lista Filter */}
+                  <div className="relative">
+                    <select
+                      value={reportFilterLista}
+                      onChange={(e) => setReportFilterLista(e.target.value)}
+                      className="appearance-none pl-4 pr-10 py-2 rounded-lg bg-white border border-gray-200 text-sm focus:ring-2 focus:ring-[#4318FF] focus:border-transparent cursor-pointer min-w-[170px]"
+                    >
+                      <option value="">Todas Listas</option>
+                      {listaOptions.map((lista) => (
+                        <option key={lista} value={lista}>{lista}</option>
                       ))}
                     </select>
                     <ArrowUpDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
@@ -1340,14 +1381,14 @@ export default function AdminTestes() {
                         onChange={toggleAllVisibleTestes}
                         className="w-4 h-4 text-[#4318FF] border-gray-300 rounded focus:ring-[#4318FF]"
                       />
-                      Selecionar todos visÃ­veis
+                      Selecionar todos visíveis
                     </label>
                     {selectedTesteIds.length > 0 && (
                       <button
                         onClick={() => setSelectedTesteIds([])}
                         className="text-xs font-medium text-red-600 hover:underline"
                       >
-                        Limpar seleÃ§Ã£o
+                        Limpar seleção
                       </button>
                     )}
                   </div>
@@ -1388,7 +1429,7 @@ export default function AdminTestes() {
                           onClick={() => handleReportSort('materia')}
                         >
                           <div className="flex items-center gap-1">
-                            MatÃ©ria
+                            Matéria
                             <ArrowUpDown size={14} className={`opacity-0 group-hover:opacity-100 ${reportSortConfig?.key === 'materia' ? 'opacity-100 text-[#4318FF]' : ''}`} />
                           </div>
                         </th>
@@ -1406,25 +1447,26 @@ export default function AdminTestes() {
                           onClick={() => handleReportSort('serie')}
                         >
                           <div className="flex items-center gap-1">
-                            SÃ©rie
+                            Série
                             <ArrowUpDown size={14} className={`opacity-0 group-hover:opacity-100 ${reportSortConfig?.key === 'serie' ? 'opacity-100 text-[#4318FF]' : ''}`} />
                           </div>
                         </th>
+                        <th className="py-4 px-4 text-sm font-bold text-[#A3AED0] uppercase tracking-wider">Lista</th>
                         <th className="py-4 px-4 text-sm font-bold text-[#A3AED0] uppercase tracking-wider">Pergunta</th>
                         <th className="py-4 px-4 text-sm font-bold text-[#A3AED0] uppercase tracking-wider text-center">Resposta</th>
-                        <th className="py-4 px-4 text-sm font-bold text-[#A3AED0] uppercase tracking-wider text-right">AÃ§Ãµes</th>
+                        <th className="py-4 px-4 text-sm font-bold text-[#A3AED0] uppercase tracking-wider text-right">Ações</th>
                       </tr>
                     </thead>
                   <tbody className="divide-y divide-gray-50">
                     {loading ? (
                       <tr>
-                        <td colSpan={7} className="py-10 text-center">
+                        <td colSpan={8} className="py-10 text-center">
                           <Spinner size="md" />
                         </td>
                       </tr>
                     ) : filteredTestesReport.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="py-10 text-center text-gray-400">
+                        <td colSpan={8} className="py-10 text-center text-gray-400">
                           {testes.length === 0 ? 'Nenhum teste cadastrado ainda.' : 'Nenhum teste encontrado com os filtros aplicados.'}
                         </td>
                       </tr>
@@ -1465,6 +1507,9 @@ export default function AdminTestes() {
                             </td>
                             <td className="py-4 px-4 text-sm font-medium text-gray-600 max-w-[150px] truncate" title={serieNames}>
                               {serieNames || '-'}
+                            </td>
+                            <td className="py-4 px-4 text-sm font-medium text-gray-600 max-w-[160px] truncate" title={(teste.lista || '').trim()}>
+                              {(teste.lista || '').trim() || '-'}
                             </td>
                             <td className="py-4 px-4 text-sm font-medium text-gray-600 max-w-[300px] truncate" title={stripHtml(teste.pergunta)}>
                               {stripHtml(teste.pergunta)}
@@ -1546,9 +1591,9 @@ export default function AdminTestes() {
           </div>
         ) : (
           <div className="space-y-6">
-            {/* MatÃ©rias */}
+            {/* Matérias */}
             <MultiSelect 
-              label="MatÃ©rias *" 
+              label="Matérias *" 
               items={materias} 
               selectedIds={formData.idmat} 
               onToggle={(id) => toggleSelection(id, 'idmat')}
@@ -1556,9 +1601,9 @@ export default function AdminTestes() {
               displayProp="materia"
             />
 
-            {/* SÃ©ries */}
+            {/* Séries */}
             <MultiSelect 
-              label="SÃ©ries *" 
+              label="Séries *" 
               items={series} 
               selectedIds={formData.idseries} 
               onToggle={(id) => toggleSelection(id, 'idseries')}
@@ -1572,7 +1617,7 @@ export default function AdminTestes() {
                 <label className="text-sm font-medium text-gray-700">
                   Tema 
                   {(formData.idmat.length > 0 || formData.idseries.length > 0) && 
-                    <span className="text-xs text-gray-400 ml-2">(filtrado por matÃ©ria/sÃ©rie)</span>
+                    <span className="text-xs text-gray-400 ml-2">(filtrado por matéria/série)</span>
                   }
                 </label>
                 <button
@@ -1607,7 +1652,7 @@ export default function AdminTestes() {
               onToggle={(id) => toggleSelection(id, 'idalunos')}
               onToggleAll={(items) => handleToggleAll(items, 'idalunos')}
               subtitle={(formData.idmat.length > 0 || formData.idseries.length > 0) && (
-                <span className="text-xs text-gray-400">(filtrado por matÃ©ria/sÃ©rie)</span>
+                <span className="text-xs text-gray-400">(filtrado por matéria/série)</span>
               )}
               renderLabel={(aluno) => {
                 const alunoSerie = series.find(s => s.id === aluno.serie)?.serie;
@@ -1624,6 +1669,18 @@ export default function AdminTestes() {
             />
 
             {/* Pergunta */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700">Lista de Exercícios</label>
+              <input
+                type="text"
+                value={formData.lista}
+                onChange={(e) => setFormData(prev => ({ ...prev, lista: e.target.value }))}
+                placeholder="Ex.: Lista 01 - Frações"
+                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-700 focus:ring-2 focus:ring-[#4318FF] outline-none"
+              />
+              <p className="text-xs text-gray-500">Use este campo para agrupar testes por lista.</p>
+            </div>
+
             <div className="space-y-2">
               <label className="text-sm font-medium text-gray-700">Pergunta *</label>
               <div className="bg-white">
@@ -1642,14 +1699,14 @@ export default function AdminTestes() {
             {/* Alternativas */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <label className="text-sm font-medium text-gray-700">Alternativas * (mÃ­n. 2, mÃ¡x. 10)</label>
+                <label className="text-sm font-medium text-gray-700">Alternativas * (mín. 2, máx. 10)</label>
                 <div className="flex gap-2">
                   <button
                     type="button"
                     onClick={() => removeAlternativa(formData.alternativas.length - 1)}
                     disabled={formData.alternativas.length <= 2}
                     className="p-1.5 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    title="Remover Ãºltima alternativa"
+                    title="Remover última alternativa"
                   >
                     <Minus size={16} />
                   </button>
@@ -1698,7 +1755,7 @@ export default function AdminTestes() {
                 ))}
               </div>
               <p className="text-xs text-gray-500">
-                Selecione o cÃ­rculo ao lado da alternativa correta (resposta selecionada: {formData.resposta})
+                Selecione o círculo ao lado da alternativa correta (resposta selecionada: {formData.resposta})
               </p>
             </div>
 
@@ -1712,7 +1769,7 @@ export default function AdminTestes() {
                   onChange={(value) => setFormData(prev => ({ ...prev, justificativa: value }))}
                   modules={modules}
                   formats={formats}
-                  placeholder="Explique por que esta Ã© a resposta correta (opcional)..."
+                  placeholder="Explique por que esta é a resposta correta (opcional)..."
                   className="bg-white"
                 />
               </div>
@@ -1732,7 +1789,7 @@ export default function AdminTestes() {
                 className="flex-1 bg-[#4318FF] hover:bg-[#3311CC]"
                 isLoading={saving}
               >
-                {formData.id ? "Salvar AlteraÃ§Ãµes" : "Salvar Teste"}
+                {formData.id ? "Salvar Alterações" : "Salvar Teste"}
               </Button>
             </div>
           </div>
@@ -1761,7 +1818,7 @@ export default function AdminTestes() {
 
           <div className="space-y-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium text-gray-700">MatÃ©rias Relacionadas *</label>
+              <label className="text-sm font-medium text-gray-700">Matérias Relacionadas *</label>
               <div className="border border-gray-200 rounded-xl p-4 max-h-40 overflow-y-auto space-y-2 bg-gray-50">
                 {materias.map(materia => (
                   <div key={materia.id} className="flex items-center gap-2">
@@ -1789,7 +1846,7 @@ export default function AdminTestes() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium text-gray-700">SÃ©ries Relacionadas *</label>
+              <label className="text-sm font-medium text-gray-700">Séries Relacionadas *</label>
               <div className="border border-gray-200 rounded-xl p-4 max-h-40 overflow-y-auto space-y-2 bg-gray-50">
                 {series.map(serie => (
                   <div key={serie.id} className="flex items-center gap-2">
@@ -1852,7 +1909,7 @@ export default function AdminTestes() {
             <p className="text-sm text-gray-700">{selectedTesteIds.length} teste(s)</p>
           </div>
           <div className="space-y-2">
-            <label className="text-sm font-medium text-gray-700">SÃ©rie (opcional)</label>
+            <label className="text-sm font-medium text-gray-700">Série (opcional)</label>
             <select
               value={massAssignSerieId}
               onChange={(e) => setMassAssignSerieId(e.target.value)}
@@ -1864,7 +1921,7 @@ export default function AdminTestes() {
               ))}
             </select>
             {massAssignSerieId && massAssignAlunos.length === 0 && (
-              <p className="text-xs text-red-500">Nenhum aluno encontrado para a sÃ©rie.</p>
+              <p className="text-xs text-red-500">Nenhum aluno encontrado para a série.</p>
             )}
           </div>
           <MultiSelect 
@@ -1874,7 +1931,7 @@ export default function AdminTestes() {
             onToggle={toggleMassAssignAluno}
             onToggleAll={toggleAllMassAssignAlunos}
             subtitle={massAssignSerieId && (
-              <span className="text-xs text-gray-400">(filtrado por sÃ©rie)</span>
+              <span className="text-xs text-gray-400">(filtrado por série)</span>
             )}
             renderLabel={(aluno) => {
               const alunoSerie = series.find(s => s.id === aluno.serie)?.serie;
@@ -1918,7 +1975,7 @@ export default function AdminTestes() {
               <FileText size={20} />
             </div>
             <div className="text-sm text-blue-800">
-              <p className="font-bold mb-1">InstruÃ§Ãµes de ImportaÃ§Ã£o</p>
+              <p className="font-bold mb-1">Instruções de Importação</p>
               <p className="mb-2">Envie um arquivo <strong>.txt</strong> com os dados separados por pipe ( | ). Arquivos .doc/.docx/.pdf devem ser convertidos para .txt.</p>
               <p className="font-mono text-xs bg-white/50 p-2 rounded border border-blue-200">
                 Pergunta | Alternativa1;Alternativa2... | Resposta (1-10) | Justificativa
@@ -1926,9 +1983,9 @@ export default function AdminTestes() {
             </div>
           </div>
 
-          {/* MatÃ©rias */}
+          {/* Matérias */}
           <MultiSelect 
-            label="MatÃ©rias *" 
+            label="Matérias *" 
             items={materias} 
             selectedIds={massiveFormData.idmat} 
             onToggle={(id) => toggleMassiveSelection(id, 'idmat')}
@@ -1936,9 +1993,9 @@ export default function AdminTestes() {
             displayProp="materia"
           />
 
-          {/* SÃ©ries */}
+          {/* Séries */}
           <MultiSelect 
-            label="SÃ©ries *" 
+            label="Séries *" 
             items={series} 
             selectedIds={massiveFormData.idseries} 
             onToggle={(id) => toggleMassiveSelection(id, 'idseries')}
@@ -1952,7 +2009,7 @@ export default function AdminTestes() {
               <label className="text-sm font-medium text-gray-700">
                 Tema 
                 {(massiveFormData.idmat.length > 0 || massiveFormData.idseries.length > 0) && 
-                  <span className="text-xs text-gray-400 ml-2">(filtrado por matÃ©ria/sÃ©rie)</span>
+                  <span className="text-xs text-gray-400 ml-2">(filtrado por matéria/série)</span>
                 }
               </label>
               <button
@@ -1987,7 +2044,7 @@ export default function AdminTestes() {
             onToggle={(id) => toggleMassiveSelection(id, 'idalunos')}
             onToggleAll={(items) => handleMassiveToggleAll(items, 'idalunos')}
             subtitle={(massiveFormData.idmat.length > 0 || massiveFormData.idseries.length > 0) && (
-              <span className="text-xs text-gray-400">(filtrado por matÃ©ria/sÃ©rie)</span>
+              <span className="text-xs text-gray-400">(filtrado por matéria/série)</span>
             )}
             renderLabel={(aluno) => {
               const alunoSerie = series.find(s => s.id === aluno.serie)?.serie;
@@ -2003,9 +2060,21 @@ export default function AdminTestes() {
             }}
           />
 
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-gray-700">Lista de Exercícios</label>
+            <input
+              type="text"
+              value={massiveFormData.lista}
+              onChange={(e) => setMassiveFormData(prev => ({ ...prev, lista: e.target.value }))}
+              placeholder="Ex.: Lista 02 - Equações"
+              className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-700 focus:ring-2 focus:ring-[#4318FF] outline-none"
+            />
+            <p className="text-xs text-gray-500">Todos os testes importados receberão esta lista.</p>
+          </div>
+
           {/* File Upload */}
           <div className="space-y-2">
-            <label className="text-sm font-medium text-gray-700">Arquivo de ImportaÃ§Ã£o (.txt, .doc, .docx, .pdf) *</label>
+            <label className="text-sm font-medium text-gray-700">Arquivo de Importação (.txt, .doc, .docx, .pdf) *</label>
             <div className={`border-2 border-dashed rounded-xl p-6 text-center transition-colors ${massiveFile ? 'border-[#4318FF] bg-blue-50' : 'border-gray-300 hover:border-[#4318FF]'}`}>
               <input
                 type="file"
@@ -2025,7 +2094,7 @@ export default function AdminTestes() {
             </div>
           </div>
 
-          {/* Log de ImportaÃ§Ã£o */}
+          {/* Log de Importação */}
           {importLog && (
             <div className={`rounded-xl p-4 ${importLog.success > 0 && importLog.errors.length === 0 ? 'bg-green-50 border border-green-100' : 'bg-orange-50 border border-orange-100'}`}>
               <div className="flex items-center gap-2 mb-2">
@@ -2034,7 +2103,7 @@ export default function AdminTestes() {
                 ) : (
                   <div className="w-5 h-5 rounded-full bg-green-500 flex items-center justify-center text-white text-xs">âœ“</div>
                 )}
-                <span className="font-bold text-gray-800">Resultado da ImportaÃ§Ã£o</span>
+                <span className="font-bold text-gray-800">Resultado da Importação</span>
               </div>
               <p className="text-sm text-gray-600 mb-2">
                 Sucessos: <span className="font-bold text-green-600">{importLog.success}</span> | 

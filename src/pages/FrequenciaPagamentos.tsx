@@ -322,7 +322,7 @@ export const FrequenciaPagamentos: React.FC = () => {
 
   const handleSaveFrequencia = async () => {
     if (!frequenciaForm.aluno_id || !frequenciaForm.data_aula || !frequenciaForm.conteudo_aula.trim()) {
-      showToast('Preencha aluno, data da aula e conteÃºdo.', 'error');
+      showToast('Preencha aluno, data da aula e conteúdo.', 'error');
       return;
     }
     setSavingFrequencia(true);
@@ -337,7 +337,7 @@ export const FrequenciaPagamentos: React.FC = () => {
           })
           .eq('id', currentFrequencia.id);
         if (error) throw error;
-        showToast('FrequÃªncia atualizada.', 'success');
+        showToast('Frequência atualizada.', 'success');
       } else {
         const { error } = await supabase
           .from('tbf_frequencias')
@@ -982,12 +982,12 @@ export const FrequenciaPagamentos: React.FC = () => {
             </div>
           </div>
           <div className="space-y-2">
-            <label className="text-sm font-medium text-gray-700">PerÃ­odo de referÃªncia *</label>
+            <label className="text-sm font-medium text-gray-700">Período de referência *</label>
             <input
               type="text"
               value={pagamentoForm.periodo_referencia}
               onChange={(e) => setPagamentoForm(prev => ({ ...prev, periodo_referencia: e.target.value }))}
-              placeholder="Ex: MarÃ§o/2026"
+              placeholder="Ex: Março/2026"
               className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-700 focus:ring-2 focus:ring-[#4318FF] outline-none"
             />
           </div>
@@ -1007,7 +1007,7 @@ export const FrequenciaPagamentos: React.FC = () => {
         onClose={() => setIsDeleteModalOpen(false)}
         onConfirm={handleDelete}
         title="Excluir registro"
-        message="Tem certeza que deseja excluir este registro? Esta aÃ§Ã£o nÃ£o pode ser desfeita."
+        message="Tem certeza que deseja excluir este registro? Esta ação não pode ser desfeita."
         loading={deleting}
       />
 
