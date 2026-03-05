@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/Button';
@@ -49,11 +49,53 @@ const formatDate = (value?: string | null) => {
   return format(date, 'dd/MM/yyyy', { locale: ptBR });
 };
 
+const formatMonthLabel = (value?: string | null) => {
+  if (!value) return 'Sem data';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Sem data';
+  return capitalizeWords(format(date, 'MMMM yyyy', { locale: ptBR }));
+};
+
+type GroupedByMonth<T> = {
+  key: string;
+  label: string;
+  items: T[];
+};
+
+const groupByMonth = <T,>(items: T[], getDate: (item: T) => string | null | undefined) => {
+  const map = new Map<string, GroupedByMonth<T>>();
+  items.forEach((item) => {
+    const dateValue = getDate(item);
+    const date = dateValue ? new Date(dateValue) : null;
+    const validDate = date && !Number.isNaN(date.getTime());
+    const key = validDate ? format(date as Date, 'yyyy-MM') : 'sem-data';
+    const label = validDate ? formatMonthLabel(dateValue) : 'Sem data';
+    const existing = map.get(key);
+    if (existing) {
+      existing.items.push(item);
+    } else {
+      map.set(key, { key, label, items: [item] });
+    }
+  });
+  return Array.from(map.values()).sort((a, b) => {
+    if (a.key === 'sem-data') return 1;
+    if (b.key === 'sem-data') return -1;
+    return b.key.localeCompare(a.key);
+  });
+};
+
 const toNumber = (value: number | string | null | undefined) => {
   if (typeof value === 'number') return value;
   if (!value) return 0;
   const parsed = Number(value);
   return Number.isNaN(parsed) ? 0 : parsed;
+};
+
+const getMonthKey = (value?: string | null) => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return format(date, 'yyyy-MM');
 };
 
 export const FrequenciaPagamentos: React.FC = () => {
@@ -96,9 +138,11 @@ export const FrequenciaPagamentos: React.FC = () => {
   });
 
   const [freqAlunoId, setFreqAlunoId] = useState('');
+  const [freqMonth, setFreqMonth] = useState('');
   const [freqStart, setFreqStart] = useState('');
   const [freqEnd, setFreqEnd] = useState('');
   const [pagAlunoId, setPagAlunoId] = useState('');
+  const [pagMonth, setPagMonth] = useState('');
   const [pagPeriodo, setPagPeriodo] = useState('');
   const [pagStart, setPagStart] = useState('');
   const [pagEnd, setPagEnd] = useState('');
@@ -303,12 +347,12 @@ export const FrequenciaPagamentos: React.FC = () => {
             conteudo_aula: frequenciaForm.conteudo_aula.trim()
           }]);
         if (error) throw error;
-        showToast('FrequÃªncia registrada.', 'success');
+        showToast('Frequência registrada.', 'success');
       }
       setIsFrequenciaModalOpen(false);
       await fetchInitialData();
     } catch {
-      showToast('Erro ao salvar frequÃªncia.', 'error');
+      showToast('Erro ao salvar frequência.', 'error');
     } finally {
       setSavingFrequencia(false);
     }
@@ -316,12 +360,12 @@ export const FrequenciaPagamentos: React.FC = () => {
 
   const handleSavePagamento = async () => {
     if (!pagamentoForm.aluno_id || !pagamentoForm.data_pagamento || !pagamentoForm.periodo_referencia.trim()) {
-      showToast('Preencha aluno, data e perÃ­odo de referÃªncia.', 'error');
+      showToast('Preencha aluno, data e período de referência.', 'error');
       return;
     }
     const valorPago = toNumber(pagamentoForm.valor_pago);
     if (valorPago <= 0) {
-      showToast('Informe um valor pago vÃ¡lido.', 'error');
+      showToast('Informe um valor pago válido.', 'error');
       return;
     }
     setSavingPagamento(true);
@@ -371,7 +415,7 @@ export const FrequenciaPagamentos: React.FC = () => {
       const table = deleteTarget.type === 'frequencia' ? 'tbf_frequencias' : 'tbf_pagamentos';
       const { error } = await supabase.from(table).delete().eq('id', deleteTarget.id);
       if (error) throw error;
-      showToast('Registro excluÃ­do.', 'success');
+      showToast('Registro excluído.', 'success');
       await fetchInitialData();
       setIsDeleteModalOpen(false);
     } catch {
@@ -384,6 +428,7 @@ export const FrequenciaPagamentos: React.FC = () => {
   const filteredFrequencias = useMemo(() => {
     return frequencias.filter((item) => {
       if (freqAlunoId && item.aluno_id !== freqAlunoId) return false;
+      if (freqMonth && getMonthKey(item.data_aula) !== freqMonth) return false;
       if (freqStart) {
         const start = new Date(freqStart);
         if (new Date(item.data_aula) < start) return false;
@@ -394,11 +439,12 @@ export const FrequenciaPagamentos: React.FC = () => {
       }
       return true;
     });
-  }, [freqAlunoId, freqEnd, freqStart, frequencias]);
+  }, [freqAlunoId, freqEnd, freqMonth, freqStart, frequencias]);
 
   const filteredPagamentos = useMemo(() => {
     return pagamentos.filter((item) => {
       if (pagAlunoId && item.aluno_id !== pagAlunoId) return false;
+      if (pagMonth && getMonthKey(item.data_pagamento) !== pagMonth) return false;
       if (pagPeriodo && !item.periodo_referencia?.toLowerCase().includes(pagPeriodo.toLowerCase())) return false;
       if (pagStart) {
         const start = new Date(pagStart);
@@ -410,7 +456,17 @@ export const FrequenciaPagamentos: React.FC = () => {
       }
       return true;
     });
-  }, [pagAlunoId, pagEnd, pagPeriodo, pagStart, pagamentos]);
+  }, [pagAlunoId, pagEnd, pagMonth, pagPeriodo, pagStart, pagamentos]);
+
+  const groupedFrequencias = useMemo(
+    () => groupByMonth(filteredFrequencias, (item) => item.data_aula),
+    [filteredFrequencias]
+  );
+
+  const groupedPagamentos = useMemo(
+    () => groupByMonth(filteredPagamentos, (item) => item.data_pagamento),
+    [filteredPagamentos]
+  );
 
   const totalRecebido = filteredPagamentos.reduce((acc, item) => acc + toNumber(item.valor_pago), 0);
 
@@ -456,13 +512,13 @@ export const FrequenciaPagamentos: React.FC = () => {
           <div className="flex flex-col items-end gap-2">
             <h1 className="text-xl md:text-2xl font-bold text-[#1B2559] flex items-center gap-2">
               <CalendarCheck size={24} />
-              FrequÃªncia e Pagamentos
+              Frequência e Pagamentos
             </h1>
             {isStaff && (
               <div className="flex flex-wrap gap-2 justify-end">
                 <Button onClick={openCreateFrequencia} className="bg-[#4318FF] hover:bg-[#3311CC]">
                   <Plus size={18} className="mr-2" />
-                  Registrar FrequÃªncia
+                  Registrar Frequência
                 </Button>
                 <Button onClick={openCreatePagamento} variant="secondary">
                   <Plus size={18} className="mr-2" />
@@ -482,7 +538,7 @@ export const FrequenciaPagamentos: React.FC = () => {
             ) : !isStaff && !isParent ? (
               <div className="bg-white rounded-3xl p-10 text-center shadow-xl shadow-gray-200/40">
                 <h3 className="text-xl font-bold text-gray-700 mb-2">Acesso restrito</h3>
-                <p className="text-gray-400">Esta Ã¡rea Ã© exclusiva para professores e administradores.</p>
+                <p className="text-gray-400">Esta área é exclusiva para professores e administradores.</p>
               </div>
             ) : (
               <>
@@ -490,7 +546,7 @@ export const FrequenciaPagamentos: React.FC = () => {
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                     <div className="bg-white rounded-3xl shadow-xl shadow-gray-200/40 border border-gray-100 p-6">
                       <div className="flex items-center justify-between mb-4">
-                        <h2 className="text-lg font-bold text-[#1B2559]">FrequÃªncia</h2>
+                        <h2 className="text-lg font-bold text-[#1B2559]">Frequência</h2>
                         <span className="text-sm text-gray-400">{filteredFrequencias.length} registros</span>
                       </div>
                       <div className="overflow-x-auto">
@@ -499,40 +555,49 @@ export const FrequenciaPagamentos: React.FC = () => {
                             <tr className="text-left text-gray-400 uppercase text-xs">
                               <th className="py-2">Aluno</th>
                               <th className="py-2">Data</th>
-                              <th className="py-2">ConteÃºdo</th>
-                              <th className="py-2 text-right">AÃ§Ãµes</th>
+                              <th className="py-2">Conteúdo</th>
+                              <th className="py-2 text-right">Ações</th>
                             </tr>
                           </thead>
                           <tbody>
-                            {filteredFrequencias.length === 0 ? (
+                            {groupedFrequencias.length === 0 ? (
                               <tr>
                                 <td colSpan={4} className="py-6 text-center text-gray-400">
-                                  Nenhum registro de frequÃªncia para o filtro selecionado.
+                                  Nenhum registro de frequência para o filtro selecionado.
                                 </td>
                               </tr>
                             ) : (
-                              filteredFrequencias.map((item) => (
-                                <tr key={item.id} className="border-t border-gray-100">
-                                  <td className="py-3 font-medium text-[#1B2559]">{alunoNome(item.aluno_id)}</td>
-                                  <td className="py-3">{formatDate(item.data_aula)}</td>
-                                  <td className="py-3 text-gray-600 max-w-[240px] truncate">{item.conteudo_aula}</td>
-                                  <td className="py-3">
-                                    <div className="flex items-center justify-end gap-2">
-                                      <button
-                                        className="p-2 rounded-lg text-[#4318FF] hover:bg-[#F4F7FE]"
-                                        onClick={() => openEditFrequencia(item)}
-                                      >
-                                        <Pencil size={16} />
-                                      </button>
-                                      <button
-                                        className="p-2 rounded-lg text-red-500 hover:bg-red-50"
-                                        onClick={() => confirmDelete('frequencia', item.id)}
-                                      >
-                                        <Trash2 size={16} />
-                                      </button>
-                                    </div>
-                                  </td>
-                                </tr>
+                              groupedFrequencias.map((group) => (
+                                <React.Fragment key={group.key}>
+                                  <tr className="bg-gray-50">
+                                    <td colSpan={4} className="py-2 px-3 text-xs font-bold text-gray-500 uppercase">
+                                      {group.label}
+                                    </td>
+                                  </tr>
+                                  {group.items.map((item) => (
+                                    <tr key={item.id} className="border-t border-gray-100">
+                                      <td className="py-3 font-medium text-[#1B2559]">{alunoNome(item.aluno_id)}</td>
+                                      <td className="py-3">{formatDate(item.data_aula)}</td>
+                                      <td className="py-3 text-gray-600 max-w-[240px] truncate">{item.conteudo_aula}</td>
+                                      <td className="py-3">
+                                        <div className="flex items-center justify-end gap-2">
+                                          <button
+                                            className="p-2 rounded-lg text-[#4318FF] hover:bg-[#F4F7FE]"
+                                            onClick={() => openEditFrequencia(item)}
+                                          >
+                                            <Pencil size={16} />
+                                          </button>
+                                          <button
+                                            className="p-2 rounded-lg text-red-500 hover:bg-red-50"
+                                            onClick={() => confirmDelete('frequencia', item.id)}
+                                          >
+                                            <Trash2 size={16} />
+                                          </button>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </React.Fragment>
                               ))
                             )}
                           </tbody>
@@ -551,42 +616,51 @@ export const FrequenciaPagamentos: React.FC = () => {
                             <tr className="text-left text-gray-400 uppercase text-xs">
                               <th className="py-2">Aluno</th>
                               <th className="py-2">Data</th>
-                              <th className="py-2">PerÃ­odo</th>
+                              <th className="py-2">Período</th>
                               <th className="py-2">Valor</th>
-                              <th className="py-2 text-right">AÃ§Ãµes</th>
+                              <th className="py-2 text-right">Ações</th>
                             </tr>
                           </thead>
                           <tbody>
-                            {filteredPagamentos.length === 0 ? (
+                            {groupedPagamentos.length === 0 ? (
                               <tr>
                                 <td colSpan={5} className="py-6 text-center text-gray-400">
                                   Nenhum pagamento para o filtro selecionado.
                                 </td>
                               </tr>
                             ) : (
-                              filteredPagamentos.map((item) => (
-                                <tr key={item.id} className="border-t border-gray-100">
-                                  <td className="py-3 font-medium text-[#1B2559]">{alunoNome(item.aluno_id)}</td>
-                                  <td className="py-3">{formatDate(item.data_pagamento)}</td>
-                                  <td className="py-3 text-gray-600">{item.periodo_referencia}</td>
-                                  <td className="py-3 font-semibold text-[#1B2559]">{currencyFormatter.format(toNumber(item.valor_pago))}</td>
-                                  <td className="py-3">
-                                    <div className="flex items-center justify-end gap-2">
-                                      <button
-                                        className="p-2 rounded-lg text-[#4318FF] hover:bg-[#F4F7FE]"
-                                        onClick={() => openEditPagamento(item)}
-                                      >
-                                        <Pencil size={16} />
-                                      </button>
-                                      <button
-                                        className="p-2 rounded-lg text-red-500 hover:bg-red-50"
-                                        onClick={() => confirmDelete('pagamento', item.id)}
-                                      >
-                                        <Trash2 size={16} />
-                                      </button>
-                                    </div>
-                                  </td>
-                                </tr>
+                              groupedPagamentos.map((group) => (
+                                <React.Fragment key={group.key}>
+                                  <tr className="bg-gray-50">
+                                    <td colSpan={5} className="py-2 px-3 text-xs font-bold text-gray-500 uppercase">
+                                      {group.label}
+                                    </td>
+                                  </tr>
+                                  {group.items.map((item) => (
+                                    <tr key={item.id} className="border-t border-gray-100">
+                                      <td className="py-3 font-medium text-[#1B2559]">{alunoNome(item.aluno_id)}</td>
+                                      <td className="py-3">{formatDate(item.data_pagamento)}</td>
+                                      <td className="py-3 text-gray-600">{item.periodo_referencia}</td>
+                                      <td className="py-3 font-semibold text-[#1B2559]">{currencyFormatter.format(toNumber(item.valor_pago))}</td>
+                                      <td className="py-3">
+                                        <div className="flex items-center justify-end gap-2">
+                                          <button
+                                            className="p-2 rounded-lg text-[#4318FF] hover:bg-[#F4F7FE]"
+                                            onClick={() => openEditPagamento(item)}
+                                          >
+                                            <Pencil size={16} />
+                                          </button>
+                                          <button
+                                            className="p-2 rounded-lg text-red-500 hover:bg-red-50"
+                                            onClick={() => confirmDelete('pagamento', item.id)}
+                                          >
+                                            <Trash2 size={16} />
+                                          </button>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </React.Fragment>
                               ))
                             )}
                           </tbody>
@@ -598,17 +672,17 @@ export const FrequenciaPagamentos: React.FC = () => {
 
                 <div className="bg-white rounded-3xl shadow-xl shadow-gray-200/40 border border-gray-100 p-6 space-y-6">
                   <div className="flex flex-wrap items-center justify-between gap-4">
-                    <h2 className="text-lg font-bold text-[#1B2559]">RelatÃ³rio</h2>
+                    <h2 className="text-lg font-bold text-[#1B2559]">Relatório</h2>
                     <Button onClick={() => window.print()} variant="outline" className="flex items-center gap-2">
                       <Printer size={18} />
-                      Imprimir RelatÃ³rio
+                      Imprimir Relatório
                     </Button>
                   </div>
 
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                     <div className="rounded-2xl border border-gray-100 p-4 space-y-3">
                       <p className="text-sm font-bold text-[#1B2559]">Filtros de Frequência</p>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                         <div>
                           <label className="text-xs font-semibold text-gray-500 uppercase">Aluno</label>
                           <select
@@ -623,6 +697,15 @@ export const FrequenciaPagamentos: React.FC = () => {
                               </option>
                             ))}
                           </select>
+                        </div>
+                        <div>
+                          <label className="text-xs font-semibold text-gray-500 uppercase">Mês/Ano</label>
+                          <input
+                            type="month"
+                            value={freqMonth}
+                            onChange={(e) => setFreqMonth(e.target.value)}
+                            className="mt-2 w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-[#4318FF] outline-none"
+                          />
                         </div>
                         <div>
                           <label className="text-xs font-semibold text-gray-500 uppercase">Data início</label>
@@ -647,7 +730,7 @@ export const FrequenciaPagamentos: React.FC = () => {
 
                     <div className="rounded-2xl border border-gray-100 p-4 space-y-3">
                       <p className="text-sm font-bold text-[#1B2559]">Filtros de Pagamentos</p>
-                      <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                      <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
                         <div>
                           <label className="text-xs font-semibold text-gray-500 uppercase">Aluno</label>
                           <select
@@ -662,6 +745,15 @@ export const FrequenciaPagamentos: React.FC = () => {
                               </option>
                             ))}
                           </select>
+                        </div>
+                        <div>
+                          <label className="text-xs font-semibold text-gray-500 uppercase">Mês/Ano</label>
+                          <input
+                            type="month"
+                            value={pagMonth}
+                            onChange={(e) => setPagMonth(e.target.value)}
+                            className="mt-2 w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-[#4318FF] outline-none"
+                          />
                         </div>
                         <div>
                           <label className="text-xs font-semibold text-gray-500 uppercase">Período ref.</label>
@@ -694,13 +786,13 @@ export const FrequenciaPagamentos: React.FC = () => {
                       </div>
                     </div>
                   </div>
-<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="bg-[#F4F7FE] rounded-2xl p-4">
                       <p className="text-xs font-semibold text-gray-400 uppercase">Aulas registradas</p>
                       <p className="text-2xl font-bold text-[#1B2559]">{filteredFrequencias.length}</p>
                     </div>
                     <div className="bg-[#F4F7FE] rounded-2xl p-4">
-                      <p className="text-xs font-semibold text-gray-400 uppercase">Pagamentos no perÃ­odo</p>
+                      <p className="text-xs font-semibold text-gray-400 uppercase">Pagamentos no período</p>
                       <p className="text-2xl font-bold text-[#1B2559]">{filteredPagamentos.length}</p>
                     </div>
                     <div className="bg-[#F4F7FE] rounded-2xl p-4">
@@ -716,23 +808,32 @@ export const FrequenciaPagamentos: React.FC = () => {
                           <tr className="text-left text-gray-400 uppercase text-xs">
                             <th className="py-3 px-4">Aluno</th>
                             <th className="py-3 px-4">Data</th>
-                            <th className="py-3 px-4">ConteÃºdo</th>
+                            <th className="py-3 px-4">Conteúdo</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {filteredFrequencias.length === 0 ? (
+                          {groupedFrequencias.length === 0 ? (
                             <tr>
                               <td colSpan={3} className="py-6 text-center text-gray-400">
-                                Nenhuma frequÃªncia para o filtro selecionado.
+                                Nenhuma frequência para o filtro selecionado.
                               </td>
                             </tr>
                           ) : (
-                            filteredFrequencias.map((item) => (
-                              <tr key={item.id} className="border-t border-gray-100">
-                                <td className="py-3 px-4 font-medium text-[#1B2559]">{alunoNome(item.aluno_id)}</td>
-                                <td className="py-3 px-4">{formatDate(item.data_aula)}</td>
-                                <td className="py-3 px-4 text-gray-600">{item.conteudo_aula}</td>
-                              </tr>
+                            groupedFrequencias.map((group) => (
+                              <React.Fragment key={group.key}>
+                                <tr className="bg-gray-50">
+                                  <td colSpan={3} className="py-2 px-4 text-xs font-bold text-gray-500 uppercase">
+                                    {group.label}
+                                  </td>
+                                </tr>
+                                {group.items.map((item) => (
+                                  <tr key={item.id} className="border-t border-gray-100">
+                                    <td className="py-3 px-4 font-medium text-[#1B2559]">{alunoNome(item.aluno_id)}</td>
+                                    <td className="py-3 px-4">{formatDate(item.data_aula)}</td>
+                                    <td className="py-3 px-4 text-gray-600">{item.conteudo_aula}</td>
+                                  </tr>
+                                ))}
+                              </React.Fragment>
                             ))
                           )}
                         </tbody>
@@ -744,25 +845,34 @@ export const FrequenciaPagamentos: React.FC = () => {
                           <tr className="text-left text-gray-400 uppercase text-xs">
                             <th className="py-3 px-4">Aluno</th>
                             <th className="py-3 px-4">Data</th>
-                            <th className="py-3 px-4">PerÃ­odo</th>
+                            <th className="py-3 px-4">Período</th>
                             <th className="py-3 px-4">Valor</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {filteredPagamentos.length === 0 ? (
+                          {groupedPagamentos.length === 0 ? (
                             <tr>
                               <td colSpan={4} className="py-6 text-center text-gray-400">
                                 Nenhum pagamento para o filtro selecionado.
                               </td>
                             </tr>
                           ) : (
-                            filteredPagamentos.map((item) => (
-                              <tr key={item.id} className="border-t border-gray-100">
-                                <td className="py-3 px-4 font-medium text-[#1B2559]">{alunoNome(item.aluno_id)}</td>
-                                <td className="py-3 px-4">{formatDate(item.data_pagamento)}</td>
-                                <td className="py-3 px-4 text-gray-600">{item.periodo_referencia}</td>
-                                <td className="py-3 px-4 font-semibold text-[#1B2559]">{currencyFormatter.format(toNumber(item.valor_pago))}</td>
-                              </tr>
+                            groupedPagamentos.map((group) => (
+                              <React.Fragment key={group.key}>
+                                <tr className="bg-gray-50">
+                                  <td colSpan={4} className="py-2 px-4 text-xs font-bold text-gray-500 uppercase">
+                                    {group.label}
+                                  </td>
+                                </tr>
+                                {group.items.map((item) => (
+                                  <tr key={item.id} className="border-t border-gray-100">
+                                    <td className="py-3 px-4 font-medium text-[#1B2559]">{alunoNome(item.aluno_id)}</td>
+                                    <td className="py-3 px-4">{formatDate(item.data_pagamento)}</td>
+                                    <td className="py-3 px-4 text-gray-600">{item.periodo_referencia}</td>
+                                    <td className="py-3 px-4 font-semibold text-[#1B2559]">{currencyFormatter.format(toNumber(item.valor_pago))}</td>
+                                  </tr>
+                                ))}
+                              </React.Fragment>
                             ))
                           )}
                         </tbody>
@@ -779,7 +889,7 @@ export const FrequenciaPagamentos: React.FC = () => {
       <Modal
         isOpen={isFrequenciaModalOpen}
         onClose={() => setIsFrequenciaModalOpen(false)}
-        title={currentFrequencia ? 'Editar FrequÃªncia' : 'Registrar FrequÃªncia'}
+        title={currentFrequencia ? 'Editar Frequência' : 'Registrar Frequência'}
         className="max-w-2xl"
       >
         <div className="space-y-5">
@@ -808,7 +918,7 @@ export const FrequenciaPagamentos: React.FC = () => {
             />
           </div>
           <div className="space-y-2">
-            <label className="text-sm font-medium text-gray-700">ConteÃºdo da aula *</label>
+            <label className="text-sm font-medium text-gray-700">Conteúdo da aula *</label>
             <textarea
               value={frequenciaForm.conteudo_aula}
               onChange={(e) => setFrequenciaForm(prev => ({ ...prev, conteudo_aula: e.target.value }))}

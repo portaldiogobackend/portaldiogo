@@ -331,7 +331,7 @@ export const StudentDissertativas: React.FC = () => {
     }
   };
 
-  const sanitizeFileName = (fileName: string) => fileName.replace(/[^\w.\-]/g, '_');
+  const sanitizeFileName = (fileName: string) => fileName.replace(/[^\w.-]/g, '_');
 
   const handleSubmit = async (questao: QuestaoDissertativa) => {
     if (isParent) {

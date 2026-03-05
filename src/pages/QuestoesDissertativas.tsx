@@ -1,4 +1,4 @@
-﻿import { Button } from '@/components/ui/Button';
+import { Button } from '@/components/ui/Button';
 import { DeleteConfirmModal } from '@/components/ui/DeleteConfirmModal';
 import { Modal } from '@/components/ui/Modal';
 import { Spinner } from '@/components/ui/Spinner';
@@ -238,16 +238,16 @@ export default function QuestoesDissertativas() {
     setToast({ message, type });
   }, []);
 
-  const getErrorMessage = (error: unknown, fallback: string) => {
+  const getErrorMessage = useCallback((error: unknown, fallback: string) => {
     if (typeof error === 'string') return error;
     if (error && typeof error === 'object' && 'message' in error) {
       const message = (error as { message?: unknown }).message;
       if (typeof message === 'string' && message.trim()) return message;
     }
     return fallback;
-  };
+  }, []);
 
-  const formatErrorMessage = (error: unknown, fallback: string) => {
+  const formatErrorMessage = useCallback((error: unknown, fallback: string) => {
     const message = getErrorMessage(error, fallback);
     if (!error || typeof error !== 'object') return message;
     const details = 'details' in error ? (error as { details?: unknown }).details : undefined;
@@ -257,7 +257,7 @@ export default function QuestoesDissertativas() {
     const extra = [details, hint, code, status].filter((item) => typeof item === 'string' || typeof item === 'number');
     if (extra.length === 0) return message;
     return `${message} (${extra.join(' | ')})`;
-  };
+  }, [getErrorMessage]);
 
   const fetchInitialData = useCallback(async () => {
     setLoading(true);
@@ -337,7 +337,7 @@ export default function QuestoesDissertativas() {
     } finally {
       setLoading(false);
     }
-  }, [navigate, showToast]);
+  }, [formatErrorMessage, navigate, showToast]);
 
   useEffect(() => {
     fetchInitialData();
@@ -1058,7 +1058,7 @@ export default function QuestoesDissertativas() {
       };
       input.click();
     };
-  }, [currentUserId, showToast]);
+  }, [currentUserId, formatErrorMessage, showToast]);
 
   const enunciadoModules = useMemo(() => ({
     toolbar: {
