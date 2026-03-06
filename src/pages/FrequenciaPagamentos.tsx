@@ -32,9 +32,9 @@ interface Pagamento {
   id: string;
   aluno_id: string;
   valor_pago: number;
-  data_pagamento: string;
-  periodo_referencia: string;
-  created_at: string;
+  data_pagamento: string | null;
+  periodo_referencia: string | null;
+  created_at: string | null;
 }
 
 const currencyFormatter = new Intl.NumberFormat('pt-BR', {
@@ -100,6 +100,23 @@ const sortByDateDesc = <T,>(items: T[], getDate: (item: T) => string | null | un
     return safeB - safeA;
   });
 };
+
+const normalizeFrequencia = (item: Partial<Frequencia> | null | undefined): Frequencia => ({
+  id: item?.id || '',
+  aluno_id: item?.aluno_id || '',
+  data_aula: item?.data_aula || '',
+  conteudo_aula: item?.conteudo_aula || '',
+  created_at: item?.created_at || ''
+});
+
+const normalizePagamento = (item: Partial<Pagamento> | null | undefined): Pagamento => ({
+  id: item?.id || '',
+  aluno_id: item?.aluno_id || '',
+  valor_pago: toNumber(item?.valor_pago),
+  data_pagamento: item?.data_pagamento || null,
+  periodo_referencia: item?.periodo_referencia || null,
+  created_at: item?.created_at || null
+});
 
 const getMonthKey = (value?: string | null) => {
   if (!value) return '';
@@ -243,8 +260,8 @@ export const FrequenciaPagamentos: React.FC = () => {
           if (frequenciasRes.error) throw frequenciasRes.error;
           if (pagamentosRes.error) throw pagamentosRes.error;
 
-          setFrequencias((frequenciasRes.data as Frequencia[]) || []);
-          setPagamentos((pagamentosRes.data as Pagamento[]) || []);
+          setFrequencias(((frequenciasRes.data as Frequencia[]) || []).map(normalizeFrequencia));
+          setPagamentos(((pagamentosRes.data as Pagamento[]) || []).map(normalizePagamento));
           return;
         }
 
@@ -272,8 +289,8 @@ export const FrequenciaPagamentos: React.FC = () => {
       if (pagamentosRes.error) throw pagamentosRes.error;
 
       setAlunos((alunosRes.data as Aluno[]) || []);
-      setFrequencias((frequenciasRes.data as Frequencia[]) || []);
-      setPagamentos((pagamentosRes.data as Pagamento[]) || []);
+      setFrequencias(((frequenciasRes.data as Frequencia[]) || []).map(normalizeFrequencia));
+      setPagamentos(((pagamentosRes.data as Pagamento[]) || []).map(normalizePagamento));
     } catch {
       showToast('Erro ao carregar dados. Verifique as tabelas do banco.', 'error');
     } finally {
@@ -349,7 +366,7 @@ export const FrequenciaPagamentos: React.FC = () => {
           .select('*')
           .single();
         if (error) throw error;
-        const updated = data as Frequencia;
+        const updated = normalizeFrequencia(data as Frequencia);
         setFrequencias((prev) =>
           sortByDateDesc(
             prev.map((item) => (item.id === updated.id ? updated : item)),
@@ -368,12 +385,13 @@ export const FrequenciaPagamentos: React.FC = () => {
           .select('*')
           .single();
         if (error) throw error;
-        const inserted = data as Frequencia;
+        const inserted = normalizeFrequencia(data as Frequencia);
         setFrequencias((prev) => sortByDateDesc([inserted, ...prev], (item) => item.data_aula));
         showToast('Frequência registrada.', 'success');
       }
       setIsFrequenciaModalOpen(false);
-    } catch {
+    } catch (error) {
+      console.error('Erro ao salvar frequência:', error);
       showToast('Erro ao salvar frequência.', 'error');
     } finally {
       setSavingFrequencia(false);
@@ -405,7 +423,7 @@ export const FrequenciaPagamentos: React.FC = () => {
           .select('*')
           .single();
         if (error) throw error;
-        const updated = data as Pagamento;
+        const updated = normalizePagamento(data as Pagamento);
         setPagamentos((prev) =>
           sortByDateDesc(
             prev.map((item) => (item.id === updated.id ? updated : item)),
@@ -425,12 +443,13 @@ export const FrequenciaPagamentos: React.FC = () => {
           .select('*')
           .single();
         if (error) throw error;
-        const inserted = data as Pagamento;
+        const inserted = normalizePagamento(data as Pagamento);
         setPagamentos((prev) => sortByDateDesc([inserted, ...prev], (item) => item.data_pagamento));
         showToast('Pagamento registrado.', 'success');
       }
       setIsPagamentoModalOpen(false);
-    } catch {
+    } catch (error) {
+      console.error('Erro ao salvar pagamento:', error);
       showToast('Erro ao salvar pagamento.', 'error');
     } finally {
       setSavingPagamento(false);
@@ -479,14 +498,15 @@ export const FrequenciaPagamentos: React.FC = () => {
     return pagamentos.filter((item) => {
       if (pagAlunoId && item.aluno_id !== pagAlunoId) return false;
       if (pagMonth && getMonthKey(item.data_pagamento) !== pagMonth) return false;
-      if (pagPeriodo && !item.periodo_referencia?.toLowerCase().includes(pagPeriodo.toLowerCase())) return false;
+      const periodoReferencia = typeof item.periodo_referencia === 'string' ? item.periodo_referencia : '';
+      if (pagPeriodo && !periodoReferencia.toLowerCase().includes(pagPeriodo.toLowerCase())) return false;
       if (pagStart) {
         const start = new Date(pagStart);
-        if (new Date(item.data_pagamento) < start) return false;
+        if (new Date(item.data_pagamento || '') < start) return false;
       }
       if (pagEnd) {
         const end = new Date(pagEnd);
-        if (new Date(item.data_pagamento) > end) return false;
+        if (new Date(item.data_pagamento || '') > end) return false;
       }
       return true;
     });
