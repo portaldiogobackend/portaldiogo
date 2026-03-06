@@ -37,6 +37,12 @@ interface Serie {
   serie: string;
 }
 
+const normalizeRole = (role?: string | null) => {
+  const normalized = (role || '').trim().toLowerCase();
+  if (normalized === 'secretario' || normalized === 'secretário') return 'pagamentos';
+  return normalized || 'aluno';
+};
+
 const Usuarios: React.FC = () => {
   const navigate = useNavigate();
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -193,7 +199,12 @@ const Usuarios: React.FC = () => {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setUsers(data || []);
+      setUsers(
+        ((data || []) as UserProfile[]).map((item) => ({
+          ...item,
+          role: normalizeRole(item.role)
+        }))
+      );
     } catch (error) {
       console.error('Error fetching all users:', error);
     } finally {
@@ -226,7 +237,7 @@ const Usuarios: React.FC = () => {
       nome: user.nome || '',
       sobrenome: user.sobrenome || '',
       signature: user.signature || 'inativo',
-      role: user.role || 'aluno',
+      role: normalizeRole(user.role),
       materias: user.materias || [],
       serie: user.serie || '',
       emailaluno: user.emailaluno || '',
@@ -256,7 +267,7 @@ const Usuarios: React.FC = () => {
           nome: editForm.nome,
           sobrenome: editForm.sobrenome,
           signature: editForm.signature,
-          role: editForm.role,
+          role: normalizeRole(editForm.role),
           materias: editForm.role === 'aluno' ? editForm.materias : [], // Only save materias if role is aluno
           serie: editForm.serie,
           emailaluno: editForm.role === 'pai' ? linkedAlunoEmails.join(', ') : ''
@@ -275,6 +286,7 @@ const Usuarios: React.FC = () => {
       setUsers(users.map(u => u.id === userToEdit.id ? { 
         ...u, 
         ...editForm,
+        role: normalizeRole(editForm.role),
         emailaluno: editForm.role === 'pai' ? linkedAlunoEmails.join(', ') : '',
         materias: editForm.role === 'aluno' ? editForm.materias : [],
         tbf_serie: selectedSerie ? { serie: selectedSerie.serie } : u.tbf_serie
@@ -320,7 +332,7 @@ const Usuarios: React.FC = () => {
     const email = createForm.email.trim().toLowerCase();
     const senha = createForm.senha.trim();
     const telefoneNumeros = telefone.replace(/\D/g, '');
-    const role = createForm.role;
+    const role = normalizeRole(createForm.role);
     const linkedAlunoEmails = alunosForLink
       .filter((aluno) => createForm.linkedAlunoIds.includes(aluno.id))
       .map((aluno) => aluno.email)
@@ -538,7 +550,7 @@ const Usuarios: React.FC = () => {
   };
 
   const alunosForLink = useMemo(() => {
-    return users.filter(user => user.role === 'aluno' && user.email);
+    return users.filter(user => normalizeRole(user.role) === 'aluno' && user.email);
   }, [users]);
 
   const toggleEditAlunoLink = (id: string) => {
@@ -584,10 +596,12 @@ const Usuarios: React.FC = () => {
   };
 
   const roleLabel = (role: string) => {
-    if (role === 'pai') return 'Pai/Mãe';
-    if (role === 'aluno') return 'Aluno';
-    if (role === 'admin') return 'Admin';
-    return role || 'Usuário';
+    const normalizedRole = normalizeRole(role);
+    if (normalizedRole === 'pagamentos') return 'Pagamentos';
+    if (normalizedRole === 'pai') return 'Pai/Mãe';
+    if (normalizedRole === 'aluno') return 'Aluno';
+    if (normalizedRole === 'admin') return 'Admin';
+    return normalizedRole || 'Usuário';
   };
 
   const accessLabel = (user: UserProfile) => {
@@ -674,7 +688,9 @@ const Usuarios: React.FC = () => {
     const matchesSearch = fullName.includes(searchQuery.toLowerCase());
 
     // Role filter
-    const matchesRole = roleFilter === 'all' || user.role === roleFilter;
+    const userRole = normalizeRole(user.role);
+    const activeRoleFilter = roleFilter === 'all' ? 'all' : normalizeRole(roleFilter);
+    const matchesRole = activeRoleFilter === 'all' || userRole === activeRoleFilter;
 
     // Signature filter
     // If showAll is true, we ignore signature filter. 
@@ -878,6 +894,7 @@ const Usuarios: React.FC = () => {
                 className="w-full px-4 py-2 bg-[#F4F7FE] border-none rounded-xl text-[#2B3674] focus:ring-2 focus:ring-[#0061FF]/20 outline-none appearance-none"
               >
                 <option value="admin">Admin</option>
+                <option value="pagamentos">Pagamentos</option>
                 <option value="pai">Pai/Mãe</option>
                 <option value="aluno">Aluno</option>
               </select>
@@ -1107,6 +1124,7 @@ const Usuarios: React.FC = () => {
               className="w-full px-4 py-2 bg-[#F4F7FE] border-none rounded-xl text-[#2B3674] focus:ring-2 focus:ring-[#0061FF]/20 outline-none appearance-none"
             >
               <option value="admin">Admin</option>
+              <option value="pagamentos">Pagamentos</option>
               <option value="pai">Pai/Mãe</option>
               <option value="aluno">Aluno</option>
             </select>
@@ -1264,6 +1282,7 @@ const Usuarios: React.FC = () => {
                     >
                       <option value="all">Todos os Cargos</option>
                       <option value="admin">Admin</option>
+                      <option value="pagamentos">Pagamentos</option>
                       <option value="pai">Pai/Mãe</option>
                       <option value="aluno">Aluno</option>
                     </select>
@@ -1424,7 +1443,7 @@ const Usuarios: React.FC = () => {
                           <td className="px-8 py-5">
                             <div className="flex items-center gap-3">
                               <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#0061FF] to-[#422AFB] flex items-center justify-center text-white font-bold text-sm shadow-lg shadow-blue-200 uppercase">
-                                {user.nome.charAt(0)}{user.sobrenome.charAt(0)}
+                                {(user.nome || '?').charAt(0)}{(user.sobrenome || '').charAt(0)}
                               </div>
                               <span className="font-bold text-[#1B2559]">
                                 {capitalizeWords(`${user.nome} ${user.sobrenome}`)}

@@ -566,7 +566,7 @@ export const Mensagens: React.FC = () => {
                           <td className="px-8 py-5">
                             <div className="flex items-center gap-3">
                               <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#0061FF] to-[#422AFB] flex items-center justify-center text-white font-bold text-sm shadow-lg shadow-blue-200 uppercase">
-                                {msg.nome.charAt(0)}
+                                {(msg.nome || '?').charAt(0)}
                               </div>
                               <span className="text-[#1B2559] font-bold">
                                 {msg.nome}
