@@ -91,6 +91,16 @@ const toNumber = (value: number | string | null | undefined) => {
   return Number.isNaN(parsed) ? 0 : parsed;
 };
 
+const sortByDateDesc = <T,>(items: T[], getDate: (item: T) => string | null | undefined) => {
+  return [...items].sort((a, b) => {
+    const aDate = new Date(getDate(a) || '').getTime();
+    const bDate = new Date(getDate(b) || '').getTime();
+    const safeA = Number.isNaN(aDate) ? 0 : aDate;
+    const safeB = Number.isNaN(bDate) ? 0 : bDate;
+    return safeB - safeA;
+  });
+};
+
 const getMonthKey = (value?: string | null) => {
   if (!value) return '';
   const date = new Date(value);
@@ -328,29 +338,41 @@ export const FrequenciaPagamentos: React.FC = () => {
     setSavingFrequencia(true);
     try {
       if (currentFrequencia) {
-        const { error } = await supabase
+        const { data, error } = await supabase
           .from('tbf_frequencias')
           .update({
             aluno_id: frequenciaForm.aluno_id,
             data_aula: frequenciaForm.data_aula,
             conteudo_aula: frequenciaForm.conteudo_aula.trim()
           })
-          .eq('id', currentFrequencia.id);
+          .eq('id', currentFrequencia.id)
+          .select('*')
+          .single();
         if (error) throw error;
+        const updated = data as Frequencia;
+        setFrequencias((prev) =>
+          sortByDateDesc(
+            prev.map((item) => (item.id === updated.id ? updated : item)),
+            (item) => item.data_aula
+          )
+        );
         showToast('Frequência atualizada.', 'success');
       } else {
-        const { error } = await supabase
+        const { data, error } = await supabase
           .from('tbf_frequencias')
           .insert([{
             aluno_id: frequenciaForm.aluno_id,
             data_aula: frequenciaForm.data_aula,
             conteudo_aula: frequenciaForm.conteudo_aula.trim()
-          }]);
+          }])
+          .select('*')
+          .single();
         if (error) throw error;
+        const inserted = data as Frequencia;
+        setFrequencias((prev) => sortByDateDesc([inserted, ...prev], (item) => item.data_aula));
         showToast('Frequência registrada.', 'success');
       }
       setIsFrequenciaModalOpen(false);
-      await fetchInitialData();
     } catch {
       showToast('Erro ao salvar frequência.', 'error');
     } finally {
@@ -371,7 +393,7 @@ export const FrequenciaPagamentos: React.FC = () => {
     setSavingPagamento(true);
     try {
       if (currentPagamento) {
-        const { error } = await supabase
+        const { data, error } = await supabase
           .from('tbf_pagamentos')
           .update({
             aluno_id: pagamentoForm.aluno_id,
@@ -379,23 +401,35 @@ export const FrequenciaPagamentos: React.FC = () => {
             data_pagamento: pagamentoForm.data_pagamento,
             periodo_referencia: pagamentoForm.periodo_referencia.trim()
           })
-          .eq('id', currentPagamento.id);
+          .eq('id', currentPagamento.id)
+          .select('*')
+          .single();
         if (error) throw error;
+        const updated = data as Pagamento;
+        setPagamentos((prev) =>
+          sortByDateDesc(
+            prev.map((item) => (item.id === updated.id ? updated : item)),
+            (item) => item.data_pagamento
+          )
+        );
         showToast('Pagamento atualizado.', 'success');
       } else {
-        const { error } = await supabase
+        const { data, error } = await supabase
           .from('tbf_pagamentos')
           .insert([{
             aluno_id: pagamentoForm.aluno_id,
             valor_pago: valorPago,
             data_pagamento: pagamentoForm.data_pagamento,
             periodo_referencia: pagamentoForm.periodo_referencia.trim()
-          }]);
+          }])
+          .select('*')
+          .single();
         if (error) throw error;
+        const inserted = data as Pagamento;
+        setPagamentos((prev) => sortByDateDesc([inserted, ...prev], (item) => item.data_pagamento));
         showToast('Pagamento registrado.', 'success');
       }
       setIsPagamentoModalOpen(false);
-      await fetchInitialData();
     } catch {
       showToast('Erro ao salvar pagamento.', 'error');
     } finally {
