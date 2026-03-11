@@ -102,16 +102,6 @@ const toNumber = (value: number | string | null | undefined) => {
   return Number.isNaN(parsed) ? 0 : parsed;
 };
 
-const sortByDateDesc = <T,>(items: T[], getDate: (item: T) => string | null | undefined) => {
-  return [...items].sort((a, b) => {
-    const aDate = new Date(getDate(a) || '').getTime();
-    const bDate = new Date(getDate(b) || '').getTime();
-    const safeA = Number.isNaN(aDate) ? 0 : aDate;
-    const safeB = Number.isNaN(bDate) ? 0 : bDate;
-    return safeB - safeA;
-  });
-};
-
 const normalizeFrequencia = (item: Partial<Frequencia> | null | undefined): Frequencia => ({
   id: item?.id || '',
   aluno_id: item?.aluno_id || '',
@@ -582,18 +572,8 @@ export const FrequenciaPagamentos: React.FC = () => {
           setSupportsPagoColumn(true);
         }
 
-        const { data, error } = result;
+        const { error } = result;
         if (error) throw error;
-        const updated = normalizeFrequencia(data as Frequencia);
-        if (supportsPagoColumn === false) {
-          updated.pago = pagoValue;
-        }
-        setFrequencias((prev) =>
-          sortByDateDesc(
-            prev.map((item) => (item.id === updated.id ? updated : item)),
-            (item) => item.data_aula
-          )
-        );
         showToast('Frequência atualizada.', 'success');
       } else {
         const insertWithPago = async (includePago: boolean) => supabase
@@ -610,16 +590,12 @@ export const FrequenciaPagamentos: React.FC = () => {
           setSupportsPagoColumn(true);
         }
 
-        const { data, error } = result;
+        const { error } = result;
         if (error) throw error;
-        const inserted = normalizeFrequencia(data as Frequencia);
-        if (supportsPagoColumn === false) {
-          inserted.pago = pagoValue;
-        }
-        setFrequencias((prev) => sortByDateDesc([inserted, ...prev], (item) => item.data_aula));
         showToast('Frequência registrada.', 'success');
       }
       setIsFrequenciaModalOpen(false);
+      await fetchInitialData();
     } catch (error) {
       console.error('Erro ao salvar frequência:', error);
       showToast('Erro ao salvar frequência.', 'error');
@@ -641,7 +617,7 @@ export const FrequenciaPagamentos: React.FC = () => {
     setSavingPagamento(true);
     try {
       if (currentPagamento) {
-        const { data, error } = await supabase
+        const { error } = await supabase
           .from('tbf_pagamentos')
           .update({
             aluno_id: pagamentoForm.aluno_id,
@@ -653,17 +629,10 @@ export const FrequenciaPagamentos: React.FC = () => {
           .select('*')
           .single();
         if (error) throw error;
-        const updated = normalizePagamento(data as Pagamento);
-        setPagamentos((prev) =>
-          sortByDateDesc(
-            prev.map((item) => (item.id === updated.id ? updated : item)),
-            (item) => item.data_pagamento
-          )
-        );
         const aulasQuitadas = Math.floor(valorPago / VALOR_AULA);
         showToast(`Pagamento atualizado. Baixa automática para até ${aulasQuitadas} aula(s).`, 'success');
       } else {
-        const { data, error } = await supabase
+        const { error } = await supabase
           .from('tbf_pagamentos')
           .insert([{
             aluno_id: pagamentoForm.aluno_id,
@@ -674,12 +643,11 @@ export const FrequenciaPagamentos: React.FC = () => {
           .select('*')
           .single();
         if (error) throw error;
-        const inserted = normalizePagamento(data as Pagamento);
-        setPagamentos((prev) => sortByDateDesc([inserted, ...prev], (item) => item.data_pagamento));
         const aulasQuitadas = Math.floor(valorPago / VALOR_AULA);
         showToast(`Pagamento registrado. Baixa automática para até ${aulasQuitadas} aula(s).`, 'success');
       }
       setIsPagamentoModalOpen(false);
+      await fetchInitialData();
     } catch (error) {
       console.error('Erro ao salvar pagamento:', error);
       showToast('Erro ao salvar pagamento.', 'error');
