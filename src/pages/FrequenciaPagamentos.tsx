@@ -125,6 +125,55 @@ const getMonthKey = (value?: string | null) => {
   return format(date, 'yyyy-MM');
 };
 
+const parsePeriodoReferenciaToMonthKey = (periodo?: string | null) => {
+  if (!periodo) return '';
+  const normalized = periodo.trim().toLowerCase();
+  if (!normalized) return '';
+
+  const numeric = normalized.match(/(\d{1,2})\D+(\d{4})/);
+  if (numeric) {
+    const month = Math.max(1, Math.min(12, Number(numeric[1])));
+    const year = Number(numeric[2]);
+    if (!Number.isNaN(year)) return `${year}-${String(month).padStart(2, '0')}`;
+  }
+
+  const months: Record<string, number> = {
+    janeiro: 1,
+    fevereiro: 2,
+    marco: 3,
+    março: 3,
+    abril: 4,
+    maio: 5,
+    junho: 6,
+    julho: 7,
+    agosto: 8,
+    setembro: 9,
+    outubro: 10,
+    novembro: 11,
+    dezembro: 12
+  };
+  const words = normalized.replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/).filter(Boolean);
+  const yearWord = words.find((word) => /^\d{4}$/.test(word));
+  const monthWord = words.find((word) => months[word] !== undefined);
+  if (yearWord && monthWord) {
+    return `${yearWord}-${String(months[monthWord]).padStart(2, '0')}`;
+  }
+
+  return '';
+};
+
+const formatMonthKeyToPeriodo = (monthKey: string) => {
+  const [year, month] = monthKey.split('-');
+  if (!year || !month) return '';
+  const numericYear = Number(year);
+  const numericMonth = Number(month);
+  if (Number.isNaN(numericYear) || Number.isNaN(numericMonth) || numericMonth < 1 || numericMonth > 12) {
+    return '';
+  }
+  const date = new Date(numericYear, numericMonth - 1, 1);
+  return `${capitalizeWords(format(date, 'MMMM', { locale: ptBR }))}/${numericYear}`;
+};
+
 export const FrequenciaPagamentos: React.FC = () => {
   const navigate = useNavigate();
   const [userName, setUserName] = useState<string>('Professor');
@@ -165,6 +214,7 @@ export const FrequenciaPagamentos: React.FC = () => {
   });
 
   const [freqAlunoId, setFreqAlunoId] = useState('');
+  const [freqStatus, setFreqStatus] = useState<'todos' | 'pago' | 'aberto'>('todos');
   const [freqMonth, setFreqMonth] = useState('');
   const [freqStart, setFreqStart] = useState('');
   const [freqEnd, setFreqEnd] = useState('');
@@ -314,6 +364,17 @@ export const FrequenciaPagamentos: React.FC = () => {
     return capitalizeWords(`${aluno.nome} ${aluno.sobrenome || ''}`.trim());
   };
 
+  const hasPagamentoForAula = useCallback((frequencia: Frequencia) => {
+    const aulaMonth = getMonthKey(frequencia.data_aula);
+    if (!aulaMonth || !frequencia.aluno_id) return false;
+    return pagamentos.some((pagamento) => {
+      if (pagamento.aluno_id !== frequencia.aluno_id) return false;
+      const byData = getMonthKey(pagamento.data_pagamento);
+      const byPeriodo = parsePeriodoReferenciaToMonthKey(pagamento.periodo_referencia);
+      return byData === aulaMonth || byPeriodo === aulaMonth;
+    });
+  }, [pagamentos]);
+
   const openCreateFrequencia = () => {
     setCurrentFrequencia(null);
     setFrequenciaForm({ aluno_id: '', data_aula: '', conteudo_aula: '' });
@@ -344,6 +405,41 @@ export const FrequenciaPagamentos: React.FC = () => {
       data_pagamento: item.data_pagamento ? item.data_pagamento.split('T')[0] : '',
       periodo_referencia: item.periodo_referencia || ''
     });
+    setIsPagamentoModalOpen(true);
+  };
+
+  const openCreatePagamentoFromFrequencia = () => {
+    if (!freqAlunoId) {
+      showToast('Selecione um aluno no filtro de frequência.', 'error');
+      return;
+    }
+    if (!freqMonth) {
+      showToast('Selecione o mês/ano no filtro de frequência.', 'error');
+      return;
+    }
+
+    const existingPagamento = pagamentos.find((pagamento) => {
+      if (pagamento.aluno_id !== freqAlunoId) return false;
+      const byData = getMonthKey(pagamento.data_pagamento);
+      const byPeriodo = parsePeriodoReferenciaToMonthKey(pagamento.periodo_referencia);
+      return byData === freqMonth || byPeriodo === freqMonth;
+    });
+
+    if (existingPagamento) {
+      openEditPagamento(existingPagamento);
+      showToast('Já existe pagamento neste período. Edite os dados e salve.', 'success');
+      return;
+    }
+
+    setCurrentPagamento(null);
+    setPagamentoForm({
+      aluno_id: freqAlunoId,
+      valor_pago: '',
+      data_pagamento: `${freqMonth}-01`,
+      periodo_referencia: formatMonthKeyToPeriodo(freqMonth)
+    });
+    setPagAlunoId(freqAlunoId);
+    setPagMonth(freqMonth);
     setIsPagamentoModalOpen(true);
   };
 
@@ -482,6 +578,9 @@ export const FrequenciaPagamentos: React.FC = () => {
     return frequencias.filter((item) => {
       if (freqAlunoId && item.aluno_id !== freqAlunoId) return false;
       if (freqMonth && getMonthKey(item.data_aula) !== freqMonth) return false;
+      const isPago = hasPagamentoForAula(item);
+      if (freqStatus === 'pago' && !isPago) return false;
+      if (freqStatus === 'aberto' && isPago) return false;
       if (freqStart) {
         const start = new Date(freqStart);
         if (new Date(item.data_aula) < start) return false;
@@ -492,7 +591,7 @@ export const FrequenciaPagamentos: React.FC = () => {
       }
       return true;
     });
-  }, [freqAlunoId, freqEnd, freqMonth, freqStart, frequencias]);
+  }, [freqAlunoId, freqEnd, freqMonth, freqStart, freqStatus, frequencias, hasPagamentoForAula]);
 
   const filteredPagamentos = useMemo(() => {
     return pagamentos.filter((item) => {
@@ -523,6 +622,7 @@ export const FrequenciaPagamentos: React.FC = () => {
   );
 
   const totalRecebido = filteredPagamentos.reduce((acc, item) => acc + toNumber(item.valor_pago), 0);
+  const aulasEmAberto = filteredFrequencias.filter((item) => !hasPagamentoForAula(item)).length;
 
   return (
     <div className="flex h-screen bg-[#F4F7FE] font-sans text-[#2B3674]">
@@ -610,13 +710,14 @@ export const FrequenciaPagamentos: React.FC = () => {
                               <th className="py-2">Aluno</th>
                               <th className="py-2">Data</th>
                               <th className="py-2">Conteúdo</th>
+                              <th className="py-2">Financeiro</th>
                               <th className="py-2 text-right">Ações</th>
                             </tr>
                           </thead>
                           <tbody>
                             {groupedFrequencias.length === 0 ? (
                               <tr>
-                                <td colSpan={4} className="py-6 text-center text-gray-400">
+                                <td colSpan={5} className="py-6 text-center text-gray-400">
                                   Nenhum registro de frequência para o filtro selecionado.
                                 </td>
                               </tr>
@@ -624,7 +725,7 @@ export const FrequenciaPagamentos: React.FC = () => {
                               groupedFrequencias.map((group) => (
                                 <React.Fragment key={group.key}>
                                   <tr className="bg-gray-50">
-                                    <td colSpan={4} className="py-2 px-3 text-xs font-bold text-gray-500 uppercase">
+                                    <td colSpan={5} className="py-2 px-3 text-xs font-bold text-gray-500 uppercase">
                                       {group.label}
                                     </td>
                                   </tr>
@@ -633,6 +734,13 @@ export const FrequenciaPagamentos: React.FC = () => {
                                       <td className="py-3 font-medium text-[#1B2559]">{alunoNome(item.aluno_id)}</td>
                                       <td className="py-3">{formatDate(item.data_aula)}</td>
                                       <td className="py-3 text-gray-600 max-w-[240px] truncate">{item.conteudo_aula}</td>
+                                      <td className="py-3">
+                                        {hasPagamentoForAula(item) ? (
+                                          <span className="text-green-600 font-semibold">Pago</span>
+                                        ) : (
+                                          <span className="text-orange-600 font-semibold">Em aberto</span>
+                                        )}
+                                      </td>
                                       <td className="py-3">
                                         <div className="flex items-center justify-end gap-2">
                                           <button
@@ -762,6 +870,18 @@ export const FrequenciaPagamentos: React.FC = () => {
                           />
                         </div>
                         <div>
+                          <label className="text-xs font-semibold text-gray-500 uppercase">Situação</label>
+                          <select
+                            value={freqStatus}
+                            onChange={(e) => setFreqStatus(e.target.value as 'todos' | 'pago' | 'aberto')}
+                            className="mt-2 w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-[#4318FF] outline-none"
+                          >
+                            <option value="todos">Todos</option>
+                            <option value="pago">Pagas</option>
+                            <option value="aberto">Em aberto</option>
+                          </select>
+                        </div>
+                        <div>
                           <label className="text-xs font-semibold text-gray-500 uppercase">Data início</label>
                           <input
                             type="date"
@@ -780,6 +900,13 @@ export const FrequenciaPagamentos: React.FC = () => {
                           />
                         </div>
                       </div>
+                      {isStaff && (
+                        <div className="flex justify-end pt-2">
+                          <Button onClick={openCreatePagamentoFromFrequencia} variant="secondary">
+                            Marcar período como pago
+                          </Button>
+                        </div>
+                      )}
                     </div>
 
                     <div className="rounded-2xl border border-gray-100 p-4 space-y-3">
@@ -846,8 +973,8 @@ export const FrequenciaPagamentos: React.FC = () => {
                       <p className="text-2xl font-bold text-[#1B2559]">{filteredFrequencias.length}</p>
                     </div>
                     <div className="bg-[#F4F7FE] rounded-2xl p-4">
-                      <p className="text-xs font-semibold text-gray-400 uppercase">Pagamentos no período</p>
-                      <p className="text-2xl font-bold text-[#1B2559]">{filteredPagamentos.length}</p>
+                      <p className="text-xs font-semibold text-gray-400 uppercase">Aulas em aberto</p>
+                      <p className="text-2xl font-bold text-[#1B2559]">{aulasEmAberto}</p>
                     </div>
                     <div className="bg-[#F4F7FE] rounded-2xl p-4">
                       <p className="text-xs font-semibold text-gray-400 uppercase">Total recebido</p>
@@ -863,12 +990,13 @@ export const FrequenciaPagamentos: React.FC = () => {
                             <th className="py-3 px-4">Aluno</th>
                             <th className="py-3 px-4">Data</th>
                             <th className="py-3 px-4">Conteúdo</th>
+                            <th className="py-3 px-4">Financeiro</th>
                           </tr>
                         </thead>
                         <tbody>
                           {groupedFrequencias.length === 0 ? (
                             <tr>
-                              <td colSpan={3} className="py-6 text-center text-gray-400">
+                              <td colSpan={4} className="py-6 text-center text-gray-400">
                                 Nenhuma frequência para o filtro selecionado.
                               </td>
                             </tr>
@@ -876,7 +1004,7 @@ export const FrequenciaPagamentos: React.FC = () => {
                             groupedFrequencias.map((group) => (
                               <React.Fragment key={group.key}>
                                 <tr className="bg-gray-50">
-                                  <td colSpan={3} className="py-2 px-4 text-xs font-bold text-gray-500 uppercase">
+                                  <td colSpan={4} className="py-2 px-4 text-xs font-bold text-gray-500 uppercase">
                                     {group.label}
                                   </td>
                                 </tr>
@@ -885,6 +1013,13 @@ export const FrequenciaPagamentos: React.FC = () => {
                                     <td className="py-3 px-4 font-medium text-[#1B2559]">{alunoNome(item.aluno_id)}</td>
                                     <td className="py-3 px-4">{formatDate(item.data_aula)}</td>
                                     <td className="py-3 px-4 text-gray-600">{item.conteudo_aula}</td>
+                                    <td className="py-3 px-4">
+                                      {hasPagamentoForAula(item) ? (
+                                        <span className="text-green-600 font-semibold">Pago</span>
+                                      ) : (
+                                        <span className="text-orange-600 font-semibold">Em aberto</span>
+                                      )}
+                                    </td>
                                   </tr>
                                 ))}
                               </React.Fragment>
