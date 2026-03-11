@@ -45,17 +45,42 @@ const currencyFormatter = new Intl.NumberFormat('pt-BR', {
   currency: 'BRL'
 });
 
+const toText = (value: unknown) => {
+  if (typeof value === 'string') return value;
+  if (value === null || value === undefined) return '';
+  return String(value);
+};
+
+const toNullableText = (value: unknown) => {
+  const text = toText(value).trim();
+  return text ? text : null;
+};
+
+const toBooleanOrNull = (value: unknown) => {
+  if (typeof value === 'boolean') return value;
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  return null;
+};
+
+const getTimeOrNull = (value?: string | null) => {
+  const text = toText(value).trim();
+  if (!text) return null;
+  const time = new Date(text).getTime();
+  return Number.isNaN(time) ? null : time;
+};
+
 const formatDate = (value?: string | null) => {
-  if (!value) return '-';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '-';
+  const time = getTimeOrNull(value);
+  if (time === null) return '-';
+  const date = new Date(time);
   return format(date, 'dd/MM/yyyy', { locale: ptBR });
 };
 
 const formatMonthLabel = (value?: string | null) => {
-  if (!value) return 'Sem data';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return 'Sem data';
+  const time = getTimeOrNull(value);
+  if (time === null) return 'Sem data';
+  const date = new Date(time);
   return capitalizeWords(format(date, 'MMMM yyyy', { locale: ptBR }));
 };
 
@@ -77,9 +102,10 @@ const groupByMonth = <T,>(items: T[], getDate: (item: T) => string | null | unde
   const map = new Map<string, GroupedByMonth<T>>();
   items.forEach((item) => {
     const dateValue = getDate(item);
-    const date = dateValue ? new Date(dateValue) : null;
-    const validDate = date && !Number.isNaN(date.getTime());
-    const key = validDate ? format(date as Date, 'yyyy-MM') : 'sem-data';
+    const time = getTimeOrNull(dateValue);
+    const validDate = time !== null;
+    const date = validDate ? new Date(time) : null;
+    const key = date ? format(date, 'yyyy-MM') : 'sem-data';
     const label = validDate ? formatMonthLabel(dateValue) : 'Sem data';
     const existing = map.get(key);
     if (existing) {
@@ -103,27 +129,27 @@ const toNumber = (value: number | string | null | undefined) => {
 };
 
 const normalizeFrequencia = (item: Partial<Frequencia> | null | undefined): Frequencia => ({
-  id: item?.id || '',
-  aluno_id: item?.aluno_id || '',
-  data_aula: item?.data_aula || '',
-  conteudo_aula: item?.conteudo_aula || '',
-  created_at: item?.created_at || '',
-  pago: typeof item?.pago === 'boolean' ? item.pago : null
+  id: toText(item?.id),
+  aluno_id: toText(item?.aluno_id),
+  data_aula: toText(item?.data_aula),
+  conteudo_aula: toText(item?.conteudo_aula),
+  created_at: toText(item?.created_at),
+  pago: toBooleanOrNull(item?.pago)
 });
 
 const normalizePagamento = (item: Partial<Pagamento> | null | undefined): Pagamento => ({
-  id: item?.id || '',
-  aluno_id: item?.aluno_id || '',
+  id: toText(item?.id),
+  aluno_id: toText(item?.aluno_id),
   valor_pago: toNumber(item?.valor_pago),
-  data_pagamento: item?.data_pagamento || null,
-  periodo_referencia: item?.periodo_referencia || null,
-  created_at: item?.created_at || null
+  data_pagamento: toNullableText(item?.data_pagamento),
+  periodo_referencia: toNullableText(item?.periodo_referencia),
+  created_at: toNullableText(item?.created_at)
 });
 
 const getMonthKey = (value?: string | null) => {
-  if (!value) return '';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '';
+  const time = getTimeOrNull(value);
+  if (time === null) return '';
+  const date = new Date(time);
   return format(date, 'yyyy-MM');
 };
 
@@ -387,12 +413,10 @@ export const FrequenciaPagamentos: React.FC = () => {
 
     frequenciasByAluno.forEach((alunoFrequencias, alunoId) => {
       const ordered = [...alunoFrequencias].sort((a, b) => {
-        const aTime = new Date(a.data_aula || '').getTime();
-        const bTime = new Date(b.data_aula || '').getTime();
-        const safeA = Number.isNaN(aTime) ? 0 : aTime;
-        const safeB = Number.isNaN(bTime) ? 0 : bTime;
+        const safeA = getTimeOrNull(a.data_aula) ?? 0;
+        const safeB = getTimeOrNull(b.data_aula) ?? 0;
         if (safeA !== safeB) return safeA - safeB;
-        return (a.created_at || '').localeCompare(b.created_at || '');
+        return toText(a.created_at).localeCompare(toText(b.created_at));
       });
 
       const totalPago = pagamentos
@@ -686,12 +710,14 @@ export const FrequenciaPagamentos: React.FC = () => {
       if (freqStatus === 'pago' && !isPago) return false;
       if (freqStatus === 'aberto' && isPago) return false;
       if (freqStart) {
-        const start = new Date(freqStart);
-        if (new Date(item.data_aula) < start) return false;
+        const itemTime = getTimeOrNull(item.data_aula);
+        const startTime = getTimeOrNull(freqStart);
+        if (itemTime !== null && startTime !== null && itemTime < startTime) return false;
       }
       if (freqEnd) {
-        const end = new Date(freqEnd);
-        if (new Date(item.data_aula) > end) return false;
+        const itemTime = getTimeOrNull(item.data_aula);
+        const endTime = getTimeOrNull(freqEnd);
+        if (itemTime !== null && endTime !== null && itemTime > endTime) return false;
       }
       return true;
     });
@@ -704,12 +730,14 @@ export const FrequenciaPagamentos: React.FC = () => {
       const periodoReferencia = typeof item.periodo_referencia === 'string' ? item.periodo_referencia : '';
       if (pagPeriodo && !periodoReferencia.toLowerCase().includes(pagPeriodo.toLowerCase())) return false;
       if (pagStart) {
-        const start = new Date(pagStart);
-        if (new Date(item.data_pagamento || '') < start) return false;
+        const itemTime = getTimeOrNull(item.data_pagamento);
+        const startTime = getTimeOrNull(pagStart);
+        if (itemTime !== null && startTime !== null && itemTime < startTime) return false;
       }
       if (pagEnd) {
-        const end = new Date(pagEnd);
-        if (new Date(item.data_pagamento || '') > end) return false;
+        const itemTime = getTimeOrNull(item.data_pagamento);
+        const endTime = getTimeOrNull(pagEnd);
+        if (itemTime !== null && endTime !== null && itemTime > endTime) return false;
       }
       return true;
     });
