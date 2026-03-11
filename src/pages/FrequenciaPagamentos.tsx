@@ -26,6 +26,7 @@ interface Frequencia {
   data_aula: string;
   conteudo_aula: string;
   created_at: string;
+  pago?: boolean | null;
 }
 
 interface Pagamento {
@@ -36,6 +37,8 @@ interface Pagamento {
   periodo_referencia: string | null;
   created_at: string | null;
 }
+
+const VALOR_AULA = 125;
 
 const currencyFormatter = new Intl.NumberFormat('pt-BR', {
   style: 'currency',
@@ -60,6 +63,14 @@ type GroupedByMonth<T> = {
   key: string;
   label: string;
   items: T[];
+};
+
+type FinancialStats = {
+  totalPago: number;
+  aulasRegistradas: number;
+  aulasPagas: number;
+  aulasEmAberto: number;
+  aulasEmHaver: number;
 };
 
 const groupByMonth = <T,>(items: T[], getDate: (item: T) => string | null | undefined) => {
@@ -106,7 +117,8 @@ const normalizeFrequencia = (item: Partial<Frequencia> | null | undefined): Freq
   aluno_id: item?.aluno_id || '',
   data_aula: item?.data_aula || '',
   conteudo_aula: item?.conteudo_aula || '',
-  created_at: item?.created_at || ''
+  created_at: item?.created_at || '',
+  pago: typeof item?.pago === 'boolean' ? item.pago : null
 });
 
 const normalizePagamento = (item: Partial<Pagamento> | null | undefined): Pagamento => ({
@@ -174,6 +186,13 @@ const formatMonthKeyToPeriodo = (monthKey: string) => {
   return `${capitalizeWords(format(date, 'MMMM', { locale: ptBR }))}/${numericYear}`;
 };
 
+const isMissingPagoColumnError = (error: unknown) => {
+  if (!error || typeof error !== 'object') return false;
+  const message = String((error as { message?: unknown }).message || '').toLowerCase();
+  const details = String((error as { details?: unknown }).details || '').toLowerCase();
+  return message.includes('column') && message.includes('pago') || details.includes('column') && details.includes('pago');
+};
+
 export const FrequenciaPagamentos: React.FC = () => {
   const navigate = useNavigate();
   const [userName, setUserName] = useState<string>('Professor');
@@ -203,7 +222,8 @@ export const FrequenciaPagamentos: React.FC = () => {
   const [frequenciaForm, setFrequenciaForm] = useState({
     aluno_id: '',
     data_aula: '',
-    conteudo_aula: ''
+    conteudo_aula: '',
+    status_pagamento: 'aberto' as 'pago' | 'aberto'
   });
 
   const [pagamentoForm, setPagamentoForm] = useState({
@@ -223,6 +243,7 @@ export const FrequenciaPagamentos: React.FC = () => {
   const [pagPeriodo, setPagPeriodo] = useState('');
   const [pagStart, setPagStart] = useState('');
   const [pagEnd, setPagEnd] = useState('');
+  const [supportsPagoColumn, setSupportsPagoColumn] = useState<boolean | null>(null);
 
   const isStaff = userRole === 'admin' || userRole === 'professor';
 
@@ -364,20 +385,107 @@ export const FrequenciaPagamentos: React.FC = () => {
     return capitalizeWords(`${aluno.nome} ${aluno.sobrenome || ''}`.trim());
   };
 
-  const hasPagamentoForAula = useCallback((frequencia: Frequencia) => {
-    const aulaMonth = getMonthKey(frequencia.data_aula);
-    if (!aulaMonth || !frequencia.aluno_id) return false;
-    return pagamentos.some((pagamento) => {
-      if (pagamento.aluno_id !== frequencia.aluno_id) return false;
-      const byData = getMonthKey(pagamento.data_pagamento);
-      const byPeriodo = parsePeriodoReferenciaToMonthKey(pagamento.periodo_referencia);
-      return byData === aulaMonth || byPeriodo === aulaMonth;
+  const paidFrequenciaIds = useMemo(() => {
+    const paidIds = new Set<string>();
+    const frequenciasByAluno = new Map<string, Frequencia[]>();
+
+    frequencias.forEach((frequencia) => {
+      const existing = frequenciasByAluno.get(frequencia.aluno_id) || [];
+      existing.push(frequencia);
+      frequenciasByAluno.set(frequencia.aluno_id, existing);
     });
-  }, [pagamentos]);
+
+    frequenciasByAluno.forEach((alunoFrequencias, alunoId) => {
+      const ordered = [...alunoFrequencias].sort((a, b) => {
+        const aTime = new Date(a.data_aula || '').getTime();
+        const bTime = new Date(b.data_aula || '').getTime();
+        const safeA = Number.isNaN(aTime) ? 0 : aTime;
+        const safeB = Number.isNaN(bTime) ? 0 : bTime;
+        if (safeA !== safeB) return safeA - safeB;
+        return (a.created_at || '').localeCompare(b.created_at || '');
+      });
+
+      const totalPago = pagamentos
+        .filter((pagamento) => pagamento.aluno_id === alunoId)
+        .reduce((acc, pagamento) => acc + Math.max(0, toNumber(pagamento.valor_pago)), 0);
+
+      const aulasQuitadas = Math.floor(totalPago / VALOR_AULA);
+      const manualPaid = ordered.filter((frequencia) => frequencia.pago === true);
+      const manualOpenIds = new Set(ordered.filter((frequencia) => frequencia.pago === false).map((frequencia) => frequencia.id));
+
+      manualPaid.forEach((frequencia) => {
+        if (frequencia.id) paidIds.add(frequencia.id);
+      });
+
+      const remainingSlots = Math.max(0, aulasQuitadas - manualPaid.length);
+      const autoCandidates = ordered.filter((frequencia) => !manualOpenIds.has(frequencia.id) && frequencia.pago !== true);
+      autoCandidates.slice(0, remainingSlots).forEach((frequencia) => {
+        if (frequencia.id) paidIds.add(frequencia.id);
+      });
+    });
+
+    return paidIds;
+  }, [frequencias, pagamentos]);
+
+  const isFrequenciaPaid = useCallback((frequencia: Frequencia) => paidFrequenciaIds.has(frequencia.id), [paidFrequenciaIds]);
+
+  const alunoFinancialStatsById = useMemo(() => {
+    const allAlunoIds = new Set<string>();
+    frequencias.forEach((item) => {
+      if (item.aluno_id) allAlunoIds.add(item.aluno_id);
+    });
+    pagamentos.forEach((item) => {
+      if (item.aluno_id) allAlunoIds.add(item.aluno_id);
+    });
+
+    const map = new Map<string, FinancialStats>();
+    allAlunoIds.forEach((alunoId) => {
+      const frequenciasAluno = frequencias.filter((item) => item.aluno_id === alunoId);
+      const aulasRegistradas = frequenciasAluno.length;
+      const aulasPagas = frequenciasAluno.filter((item) => paidFrequenciaIds.has(item.id)).length;
+      const totalPago = pagamentos
+        .filter((pagamento) => pagamento.aluno_id === alunoId)
+        .reduce((acc, pagamento) => acc + Math.max(0, toNumber(pagamento.valor_pago)), 0);
+      const totalAulasPagasPeloValor = Math.floor(totalPago / VALOR_AULA);
+      const aulasEmAberto = Math.max(0, aulasRegistradas - aulasPagas);
+      const aulasEmHaver = Math.max(0, totalAulasPagasPeloValor - aulasPagas);
+      map.set(alunoId, { totalPago, aulasRegistradas, aulasPagas, aulasEmAberto, aulasEmHaver });
+    });
+
+    return map;
+  }, [frequencias, pagamentos, paidFrequenciaIds]);
+
+  const getAlunoFinancialStats = useCallback((alunoId?: string): FinancialStats => {
+    if (!alunoId) {
+      return { totalPago: 0, aulasRegistradas: 0, aulasPagas: 0, aulasEmAberto: 0, aulasEmHaver: 0 };
+    }
+    return alunoFinancialStatsById.get(alunoId) || { totalPago: 0, aulasRegistradas: 0, aulasPagas: 0, aulasEmAberto: 0, aulasEmHaver: 0 };
+  }, [alunoFinancialStatsById]);
+
+  const renderAlunoWithCredito = (alunoId: string) => {
+    const stats = getAlunoFinancialStats(alunoId);
+    return (
+      <div className="flex items-center gap-2">
+        <span>{alunoNome(alunoId)}</span>
+        {stats.aulasEmHaver > 0 && (
+          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-green-100 text-green-700">
+            Crédito: {stats.aulasEmHaver}
+          </span>
+        )}
+      </div>
+    );
+  };
 
   const openCreateFrequencia = () => {
     setCurrentFrequencia(null);
-    setFrequenciaForm({ aluno_id: '', data_aula: '', conteudo_aula: '' });
+    const initialAlunoId = freqAlunoId || '';
+    const stats = getAlunoFinancialStats(initialAlunoId);
+    setFrequenciaForm({
+      aluno_id: initialAlunoId,
+      data_aula: '',
+      conteudo_aula: '',
+      status_pagamento: stats.aulasEmHaver > 0 ? 'pago' : 'aberto'
+    });
     setIsFrequenciaModalOpen(true);
   };
 
@@ -386,7 +494,8 @@ export const FrequenciaPagamentos: React.FC = () => {
     setFrequenciaForm({
       aluno_id: item.aluno_id,
       data_aula: item.data_aula ? item.data_aula.split('T')[0] : '',
-      conteudo_aula: item.conteudo_aula || ''
+      conteudo_aula: item.conteudo_aula || '',
+      status_pagamento: item.pago === true ? 'pago' : item.pago === false ? 'aberto' : (isFrequenciaPaid(item) ? 'pago' : 'aberto')
     });
     setIsFrequenciaModalOpen(true);
   };
@@ -450,19 +559,35 @@ export const FrequenciaPagamentos: React.FC = () => {
     }
     setSavingFrequencia(true);
     try {
+      const pagoValue = frequenciaForm.status_pagamento === 'pago';
+      const basePayload = {
+        aluno_id: frequenciaForm.aluno_id,
+        data_aula: frequenciaForm.data_aula,
+        conteudo_aula: frequenciaForm.conteudo_aula.trim()
+      };
+
       if (currentFrequencia) {
-        const { data, error } = await supabase
+        const updateWithPago = async (includePago: boolean) => supabase
           .from('tbf_frequencias')
-          .update({
-            aluno_id: frequenciaForm.aluno_id,
-            data_aula: frequenciaForm.data_aula,
-            conteudo_aula: frequenciaForm.conteudo_aula.trim()
-          })
+          .update(includePago ? { ...basePayload, pago: pagoValue } : basePayload)
           .eq('id', currentFrequencia.id)
           .select('*')
           .single();
+
+        let result = await updateWithPago(supportsPagoColumn !== false);
+        if (result.error && supportsPagoColumn !== false && isMissingPagoColumnError(result.error)) {
+          setSupportsPagoColumn(false);
+          result = await updateWithPago(false);
+        } else if (!result.error && supportsPagoColumn !== false) {
+          setSupportsPagoColumn(true);
+        }
+
+        const { data, error } = result;
         if (error) throw error;
         const updated = normalizeFrequencia(data as Frequencia);
+        if (supportsPagoColumn === false) {
+          updated.pago = pagoValue;
+        }
         setFrequencias((prev) =>
           sortByDateDesc(
             prev.map((item) => (item.id === updated.id ? updated : item)),
@@ -471,17 +596,26 @@ export const FrequenciaPagamentos: React.FC = () => {
         );
         showToast('Frequência atualizada.', 'success');
       } else {
-        const { data, error } = await supabase
+        const insertWithPago = async (includePago: boolean) => supabase
           .from('tbf_frequencias')
-          .insert([{
-            aluno_id: frequenciaForm.aluno_id,
-            data_aula: frequenciaForm.data_aula,
-            conteudo_aula: frequenciaForm.conteudo_aula.trim()
-          }])
+          .insert([includePago ? { ...basePayload, pago: pagoValue } : basePayload])
           .select('*')
           .single();
+
+        let result = await insertWithPago(supportsPagoColumn !== false);
+        if (result.error && supportsPagoColumn !== false && isMissingPagoColumnError(result.error)) {
+          setSupportsPagoColumn(false);
+          result = await insertWithPago(false);
+        } else if (!result.error && supportsPagoColumn !== false) {
+          setSupportsPagoColumn(true);
+        }
+
+        const { data, error } = result;
         if (error) throw error;
         const inserted = normalizeFrequencia(data as Frequencia);
+        if (supportsPagoColumn === false) {
+          inserted.pago = pagoValue;
+        }
         setFrequencias((prev) => sortByDateDesc([inserted, ...prev], (item) => item.data_aula));
         showToast('Frequência registrada.', 'success');
       }
@@ -526,7 +660,8 @@ export const FrequenciaPagamentos: React.FC = () => {
             (item) => item.data_pagamento
           )
         );
-        showToast('Pagamento atualizado.', 'success');
+        const aulasQuitadas = Math.floor(valorPago / VALOR_AULA);
+        showToast(`Pagamento atualizado. Baixa automática para até ${aulasQuitadas} aula(s).`, 'success');
       } else {
         const { data, error } = await supabase
           .from('tbf_pagamentos')
@@ -541,7 +676,8 @@ export const FrequenciaPagamentos: React.FC = () => {
         if (error) throw error;
         const inserted = normalizePagamento(data as Pagamento);
         setPagamentos((prev) => sortByDateDesc([inserted, ...prev], (item) => item.data_pagamento));
-        showToast('Pagamento registrado.', 'success');
+        const aulasQuitadas = Math.floor(valorPago / VALOR_AULA);
+        showToast(`Pagamento registrado. Baixa automática para até ${aulasQuitadas} aula(s).`, 'success');
       }
       setIsPagamentoModalOpen(false);
     } catch (error) {
@@ -578,7 +714,7 @@ export const FrequenciaPagamentos: React.FC = () => {
     return frequencias.filter((item) => {
       if (freqAlunoId && item.aluno_id !== freqAlunoId) return false;
       if (freqMonth && getMonthKey(item.data_aula) !== freqMonth) return false;
-      const isPago = hasPagamentoForAula(item);
+      const isPago = isFrequenciaPaid(item);
       if (freqStatus === 'pago' && !isPago) return false;
       if (freqStatus === 'aberto' && isPago) return false;
       if (freqStart) {
@@ -591,7 +727,7 @@ export const FrequenciaPagamentos: React.FC = () => {
       }
       return true;
     });
-  }, [freqAlunoId, freqEnd, freqMonth, freqStart, freqStatus, frequencias, hasPagamentoForAula]);
+  }, [freqAlunoId, freqEnd, freqMonth, freqStart, freqStatus, frequencias, isFrequenciaPaid]);
 
   const filteredPagamentos = useMemo(() => {
     return pagamentos.filter((item) => {
@@ -622,7 +758,7 @@ export const FrequenciaPagamentos: React.FC = () => {
   );
 
   const totalRecebido = filteredPagamentos.reduce((acc, item) => acc + toNumber(item.valor_pago), 0);
-  const aulasEmAberto = filteredFrequencias.filter((item) => !hasPagamentoForAula(item)).length;
+  const aulasEmAberto = filteredFrequencias.filter((item) => !isFrequenciaPaid(item)).length;
 
   return (
     <div className="flex h-screen bg-[#F4F7FE] font-sans text-[#2B3674]">
@@ -730,12 +866,12 @@ export const FrequenciaPagamentos: React.FC = () => {
                                     </td>
                                   </tr>
                                   {group.items.map((item) => (
-                                    <tr key={item.id} className="border-t border-gray-100">
-                                      <td className="py-3 font-medium text-[#1B2559]">{alunoNome(item.aluno_id)}</td>
+                                    <tr key={item.id} className={`border-t border-gray-100 ${isFrequenciaPaid(item) ? '' : 'bg-amber-50/60'}`}>
+                                      <td className="py-3 font-medium text-[#1B2559]">{renderAlunoWithCredito(item.aluno_id)}</td>
                                       <td className="py-3">{formatDate(item.data_aula)}</td>
                                       <td className="py-3 text-gray-600 max-w-[240px] truncate">{item.conteudo_aula}</td>
                                       <td className="py-3">
-                                        {hasPagamentoForAula(item) ? (
+                                      {isFrequenciaPaid(item) ? (
                                           <span className="text-green-600 font-semibold">Pago</span>
                                         ) : (
                                           <span className="text-orange-600 font-semibold">Em aberto</span>
@@ -800,7 +936,7 @@ export const FrequenciaPagamentos: React.FC = () => {
                                   </tr>
                                   {group.items.map((item) => (
                                     <tr key={item.id} className="border-t border-gray-100">
-                                      <td className="py-3 font-medium text-[#1B2559]">{alunoNome(item.aluno_id)}</td>
+                                      <td className="py-3 font-medium text-[#1B2559]">{renderAlunoWithCredito(item.aluno_id)}</td>
                                       <td className="py-3">{formatDate(item.data_pagamento)}</td>
                                       <td className="py-3 text-gray-600">{item.periodo_referencia}</td>
                                       <td className="py-3 font-semibold text-[#1B2559]">{currencyFormatter.format(toNumber(item.valor_pago))}</td>
@@ -1009,12 +1145,12 @@ export const FrequenciaPagamentos: React.FC = () => {
                                   </td>
                                 </tr>
                                 {group.items.map((item) => (
-                                  <tr key={item.id} className="border-t border-gray-100">
-                                    <td className="py-3 px-4 font-medium text-[#1B2559]">{alunoNome(item.aluno_id)}</td>
+                                  <tr key={item.id} className={`border-t border-gray-100 ${isFrequenciaPaid(item) ? '' : 'bg-amber-50/60'}`}>
+                                    <td className="py-3 px-4 font-medium text-[#1B2559]">{renderAlunoWithCredito(item.aluno_id)}</td>
                                     <td className="py-3 px-4">{formatDate(item.data_aula)}</td>
                                     <td className="py-3 px-4 text-gray-600">{item.conteudo_aula}</td>
                                     <td className="py-3 px-4">
-                                      {hasPagamentoForAula(item) ? (
+                                      {isFrequenciaPaid(item) ? (
                                         <span className="text-green-600 font-semibold">Pago</span>
                                       ) : (
                                         <span className="text-orange-600 font-semibold">Em aberto</span>
@@ -1055,7 +1191,7 @@ export const FrequenciaPagamentos: React.FC = () => {
                                 </tr>
                                 {group.items.map((item) => (
                                   <tr key={item.id} className="border-t border-gray-100">
-                                    <td className="py-3 px-4 font-medium text-[#1B2559]">{alunoNome(item.aluno_id)}</td>
+                                    <td className="py-3 px-4 font-medium text-[#1B2559]">{renderAlunoWithCredito(item.aluno_id)}</td>
                                     <td className="py-3 px-4">{formatDate(item.data_pagamento)}</td>
                                     <td className="py-3 px-4 text-gray-600">{item.periodo_referencia}</td>
                                     <td className="py-3 px-4 font-semibold text-[#1B2559]">{currencyFormatter.format(toNumber(item.valor_pago))}</td>
@@ -1086,7 +1222,15 @@ export const FrequenciaPagamentos: React.FC = () => {
             <label className="text-sm font-medium text-gray-700">Aluno *</label>
             <select
               value={frequenciaForm.aluno_id}
-              onChange={(e) => setFrequenciaForm(prev => ({ ...prev, aluno_id: e.target.value }))}
+              onChange={(e) => {
+                const alunoId = e.target.value;
+                const stats = getAlunoFinancialStats(alunoId);
+                setFrequenciaForm(prev => ({
+                  ...prev,
+                  aluno_id: alunoId,
+                  status_pagamento: stats.aulasEmHaver > 0 ? 'pago' : prev.status_pagamento
+                }));
+              }}
               className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-700 focus:ring-2 focus:ring-[#4318FF] outline-none"
             >
               <option value="">Selecione</option>
@@ -1096,6 +1240,12 @@ export const FrequenciaPagamentos: React.FC = () => {
                 </option>
               ))}
             </select>
+            {frequenciaForm.aluno_id && (
+              <p className="text-xs text-gray-500">
+                Aulas em haver: <span className="font-semibold text-[#1B2559]">{getAlunoFinancialStats(frequenciaForm.aluno_id).aulasEmHaver}</span> |
+                Aulas em aberto: <span className="font-semibold text-[#1B2559]">{getAlunoFinancialStats(frequenciaForm.aluno_id).aulasEmAberto}</span>
+              </p>
+            )}
           </div>
           <div className="space-y-2">
             <label className="text-sm font-medium text-gray-700">Data da aula *</label>
@@ -1114,6 +1264,17 @@ export const FrequenciaPagamentos: React.FC = () => {
               rows={4}
               className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-700 focus:ring-2 focus:ring-[#4318FF] outline-none"
             />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-gray-700">Situação de pagamento da aula *</label>
+            <select
+              value={frequenciaForm.status_pagamento}
+              onChange={(e) => setFrequenciaForm(prev => ({ ...prev, status_pagamento: e.target.value as 'pago' | 'aberto' }))}
+              className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-700 focus:ring-2 focus:ring-[#4318FF] outline-none"
+            >
+              <option value="aberto">Em aberto</option>
+              <option value="pago">Pago</option>
+            </select>
           </div>
           <div className="flex gap-3">
             <Button variant="ghost" onClick={() => setIsFrequenciaModalOpen(false)} className="flex-1">
