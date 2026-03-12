@@ -1,4 +1,4 @@
-﻿import { Button } from '@/components/ui/Button';
+import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { Spinner } from '@/components/ui/Spinner';
 import { Toast, type ToastType } from '@/components/ui/Toast';
@@ -101,6 +101,31 @@ const stripHtml = (html: string) => {
   if (!html) return '';
   const doc = new DOMParser().parseFromString(html, 'text/html');
   return doc.body.textContent || "";
+};
+
+const formatApiErrorMessage = (error: unknown, fallback = 'Erro desconhecido') => {
+  if (!error) return fallback;
+  if (typeof error === 'string') return error;
+  if (error instanceof Error) return error.message || fallback;
+  if (typeof error === 'object') {
+    const message = 'message' in error ? String((error as { message?: unknown }).message || '') : '';
+    const details = 'details' in error ? String((error as { details?: unknown }).details || '') : '';
+    const hint = 'hint' in error ? String((error as { hint?: unknown }).hint || '') : '';
+    const code = 'code' in error ? String((error as { code?: unknown }).code || '') : '';
+    const parts = [message, details, hint, code].filter(Boolean);
+    if (parts.length > 0) return parts.join(' | ');
+  }
+  return fallback;
+};
+
+const isApiCommunicationError = (error: unknown) => {
+  const text = formatApiErrorMessage(error, '').toLowerCase();
+  return text.includes('failed to fetch')
+    || text.includes('networkerror')
+    || text.includes('network request failed')
+    || text.includes('fetch failed')
+    || text.includes('gateway timeout')
+    || text.includes('timeout');
 };
 
 export default function AdminTestes() {
@@ -683,6 +708,20 @@ export default function AdminTestes() {
       let successCount = 0;
       const errors: string[] = [];
       const questionsSeen = new Set<string>();
+      const pendingInserts: Array<{
+        lineNumber: number;
+        payload: {
+          idmat: string[];
+          idseries: string[];
+          idtema: string[];
+          idalunos: string[];
+          lista: string | null;
+          pergunta: string;
+          alternativa: string;
+          resposta: number;
+          justificativa: string;
+        };
+      }> = [];
 
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
@@ -734,29 +773,56 @@ export default function AdminTestes() {
           continue;
         }
 
-        // Insert into Supabase
-        try {
-          const { error } = await supabase
-            .from('tbf_testes')
-            .insert([{
-              idmat: massiveFormData.idmat,
-              idseries: massiveFormData.idseries,
-              idtema: massiveFormData.idtema,
-              idalunos: massiveFormData.idalunos,
-              lista: massiveFormData.lista.trim() || null,
-              pergunta,
-              alternativa: alternativas,
-              resposta,
-              justificativa
-            }]);
+        pendingInserts.push({
+          lineNumber: i + 1,
+          payload: {
+            idmat: massiveFormData.idmat,
+            idseries: massiveFormData.idseries,
+            idtema: massiveFormData.idtema,
+            idalunos: massiveFormData.idalunos,
+            lista: massiveFormData.lista.trim() || null,
+            pergunta,
+            alternativa: alternativas,
+            resposta,
+            justificativa
+          }
+        });
+      }
 
-          if (error) throw error;
-          successCount++;
-        } catch (err) {
-          console.error(`Error importing line ${i + 1}:`, err);
-          const message = err instanceof Error ? err.message : 'Erro desconhecido';
-          errors.push(`Linha ${i + 1}: Erro ao salvar no banco - ${message}`);
+      const chunkSize = 25;
+      for (let start = 0; start < pendingInserts.length; start += chunkSize) {
+        const chunk = pendingInserts.slice(start, start + chunkSize);
+        const { error: chunkError } = await supabase
+          .from('tbf_testes')
+          .insert(chunk.map(item => item.payload));
+
+        if (!chunkError) {
+          successCount += chunk.length;
+          continue;
         }
+
+        console.error(`Error importing chunk ${start}-${start + chunk.length}:`, chunkError);
+        for (const item of chunk) {
+          try {
+            const { error } = await supabase
+              .from('tbf_testes')
+              .insert([item.payload]);
+            if (error) throw error;
+            successCount++;
+          } catch (err) {
+            console.error(`Error importing line ${item.lineNumber}:`, err);
+            const message = formatApiErrorMessage(err);
+            errors.push(`Linha ${item.lineNumber}: Erro ao salvar no banco - ${message}`);
+          }
+        }
+      }
+
+      const hasApiCommunicationIssue = errors.some((line) => line.toLowerCase().includes('failed to fetch'))
+        || errors.some((line) => line.toLowerCase().includes('network'))
+        || errors.some((line) => line.toLowerCase().includes('timeout'));
+
+      if (hasApiCommunicationIssue) {
+        errors.unshift('Falha de comunicação com a API detectada durante a importação. Verifique conexão/rede e tente novamente.');
       }
 
       setImporting(false);
@@ -770,7 +836,11 @@ export default function AdminTestes() {
           closeMassiveModal();
         }
       } else {
-        showToast('Nenhum teste foi importado. Verifique os erros.', 'error');
+        if (isApiCommunicationError(errors.join(' '))) {
+          showToast('Erro de comunicação com a API. Tente novamente em instantes.', 'error');
+        } else {
+          showToast('Nenhum teste foi importado. Verifique os erros.', 'error');
+        }
       }
     };
 

@@ -128,6 +128,16 @@ const toNumber = (value: number | string | null | undefined) => {
   return Number.isNaN(parsed) ? 0 : parsed;
 };
 
+const sortByDateDesc = <T,>(items: T[], getDate: (item: T) => string | null | undefined) => {
+  return [...items].sort((a, b) => {
+    const aTime = getTimeOrNull(getDate(a));
+    const bTime = getTimeOrNull(getDate(b));
+    const safeA = aTime ?? 0;
+    const safeB = bTime ?? 0;
+    return safeB - safeA;
+  });
+};
+
 const normalizeFrequencia = (item: Partial<Frequencia> | null | undefined): Frequencia => ({
   id: toText(item?.id),
   aluno_id: toText(item?.aluno_id),
@@ -204,9 +214,35 @@ const formatMonthKeyToPeriodo = (monthKey: string) => {
 
 const isMissingPagoColumnError = (error: unknown) => {
   if (!error || typeof error !== 'object') return false;
+  const code = String((error as { code?: unknown }).code || '').toUpperCase();
   const message = String((error as { message?: unknown }).message || '').toLowerCase();
   const details = String((error as { details?: unknown }).details || '').toLowerCase();
-  return message.includes('column') && message.includes('pago') || details.includes('column') && details.includes('pago');
+  const hint = String((error as { hint?: unknown }).hint || '').toLowerCase();
+  return code === 'PGRST204'
+    || code === '42703'
+    || (message.includes('column') && message.includes('pago'))
+    || (details.includes('column') && details.includes('pago'))
+    || (hint.includes('column') && hint.includes('pago'));
+};
+
+const getSupabaseErrorDetails = (error: unknown) => {
+  if (!error || typeof error !== 'object') {
+    return { message: 'Erro desconhecido', details: '', hint: '', code: '' };
+  }
+
+  const candidate = error as {
+    message?: unknown;
+    details?: unknown;
+    hint?: unknown;
+    code?: unknown;
+  };
+
+  return {
+    message: toText(candidate.message) || 'Erro desconhecido',
+    details: toText(candidate.details),
+    hint: toText(candidate.hint),
+    code: toText(candidate.code)
+  };
 };
 
 export const FrequenciaPagamentos: React.FC = () => {
@@ -266,6 +302,26 @@ export const FrequenciaPagamentos: React.FC = () => {
   const showToast = useCallback((message: string, type: ToastType) => {
     setToast({ message, type });
   }, []);
+
+  const ensurePagoColumnSupport = useCallback(async () => {
+    if (supportsPagoColumn !== null) return supportsPagoColumn;
+    const { error } = await supabase
+      .from('tbf_frequencias')
+      .select('id, pago')
+      .limit(1);
+
+    if (!error) {
+      setSupportsPagoColumn(true);
+      return true;
+    }
+    if (isMissingPagoColumnError(error)) {
+      setSupportsPagoColumn(false);
+      return false;
+    }
+    console.error('Erro ao verificar suporte da coluna pago:', error);
+    setSupportsPagoColumn(false);
+    return false;
+  }, [supportsPagoColumn]);
 
   const fetchInitialData = useCallback(async () => {
     setLoading(true);
@@ -574,11 +630,20 @@ export const FrequenciaPagamentos: React.FC = () => {
     setSavingFrequencia(true);
     try {
       const pagoValue = frequenciaForm.status_pagamento === 'pago';
+      const canPersistPago = await ensurePagoColumnSupport();
       const basePayload = {
         aluno_id: frequenciaForm.aluno_id,
         data_aula: frequenciaForm.data_aula,
         conteudo_aula: frequenciaForm.conteudo_aula.trim()
       };
+      const payload = canPersistPago ? { ...basePayload, pago: pagoValue } : basePayload;
+
+      console.log('[Frequencia] Salvando registro', {
+        mode: currentFrequencia ? 'update' : 'insert',
+        currentFrequenciaId: currentFrequencia?.id || null,
+        supportsPagoColumn,
+        payload
+      });
 
       if (currentFrequencia) {
         const updateWithPago = async (includePago: boolean) => supabase
@@ -588,16 +653,31 @@ export const FrequenciaPagamentos: React.FC = () => {
           .select('*')
           .single();
 
-        let result = await updateWithPago(supportsPagoColumn !== false);
-        if (result.error && supportsPagoColumn !== false && isMissingPagoColumnError(result.error)) {
+        let result = await updateWithPago(canPersistPago);
+        if (result.error && canPersistPago && isMissingPagoColumnError(result.error)) {
           setSupportsPagoColumn(false);
           result = await updateWithPago(false);
-        } else if (!result.error && supportsPagoColumn !== false) {
+        } else if (!result.error && canPersistPago) {
           setSupportsPagoColumn(true);
         }
 
-        const { error } = result;
+        const { data, error } = result;
+        if (error) {
+          console.error('[Frequencia] Falha no update', {
+            error: getSupabaseErrorDetails(error),
+            currentFrequenciaId: currentFrequencia.id,
+            payload
+          });
+        }
         if (error) throw error;
+        const updated = normalizeFrequencia(data as Frequencia);
+        if (!canPersistPago) updated.pago = pagoValue;
+        setFrequencias((prev) =>
+          sortByDateDesc(
+            prev.map((item) => (item.id === updated.id ? updated : item)),
+            (item) => item.data_aula
+          )
+        );
         showToast('Frequência atualizada.', 'success');
       } else {
         const insertWithPago = async (includePago: boolean) => supabase
@@ -606,20 +686,28 @@ export const FrequenciaPagamentos: React.FC = () => {
           .select('*')
           .single();
 
-        let result = await insertWithPago(supportsPagoColumn !== false);
-        if (result.error && supportsPagoColumn !== false && isMissingPagoColumnError(result.error)) {
+        let result = await insertWithPago(canPersistPago);
+        if (result.error && canPersistPago && isMissingPagoColumnError(result.error)) {
           setSupportsPagoColumn(false);
           result = await insertWithPago(false);
-        } else if (!result.error && supportsPagoColumn !== false) {
+        } else if (!result.error && canPersistPago) {
           setSupportsPagoColumn(true);
         }
 
-        const { error } = result;
+        const { data, error } = result;
+        if (error) {
+          console.error('[Frequencia] Falha no insert', {
+            error: getSupabaseErrorDetails(error),
+            payload
+          });
+        }
         if (error) throw error;
+        const inserted = normalizeFrequencia(data as Frequencia);
+        if (!canPersistPago) inserted.pago = pagoValue;
+        setFrequencias((prev) => sortByDateDesc([inserted, ...prev], (item) => item.data_aula));
         showToast('Frequência registrada.', 'success');
       }
       setIsFrequenciaModalOpen(false);
-      await fetchInitialData();
     } catch (error) {
       console.error('Erro ao salvar frequência:', error);
       showToast('Erro ao salvar frequência.', 'error');
@@ -640,38 +728,62 @@ export const FrequenciaPagamentos: React.FC = () => {
     }
     setSavingPagamento(true);
     try {
+      const payload = {
+        aluno_id: pagamentoForm.aluno_id,
+        valor_pago: valorPago,
+        data_pagamento: pagamentoForm.data_pagamento,
+        periodo_referencia: pagamentoForm.periodo_referencia.trim()
+      };
+
+      console.log('[Pagamento] Salvando registro', {
+        mode: currentPagamento ? 'update' : 'insert',
+        currentPagamentoId: currentPagamento?.id || null,
+        payload
+      });
+
       if (currentPagamento) {
-        const { error } = await supabase
+        const { data, error } = await supabase
           .from('tbf_pagamentos')
-          .update({
-            aluno_id: pagamentoForm.aluno_id,
-            valor_pago: valorPago,
-            data_pagamento: pagamentoForm.data_pagamento,
-            periodo_referencia: pagamentoForm.periodo_referencia.trim()
-          })
+          .update(payload)
           .eq('id', currentPagamento.id)
           .select('*')
           .single();
+        if (error) {
+          console.error('[Pagamento] Falha no update', {
+            error: getSupabaseErrorDetails(error),
+            currentPagamentoId: currentPagamento.id,
+            payload
+          });
+        }
         if (error) throw error;
+        const updated = normalizePagamento(data as Pagamento);
+        setPagamentos((prev) =>
+          sortByDateDesc(
+            prev.map((item) => (item.id === updated.id ? updated : item)),
+            (item) => item.data_pagamento
+          )
+        );
         const aulasQuitadas = Math.floor(valorPago / VALOR_AULA);
         showToast(`Pagamento atualizado. Baixa automática para até ${aulasQuitadas} aula(s).`, 'success');
       } else {
-        const { error } = await supabase
+        const { data, error } = await supabase
           .from('tbf_pagamentos')
-          .insert([{
-            aluno_id: pagamentoForm.aluno_id,
-            valor_pago: valorPago,
-            data_pagamento: pagamentoForm.data_pagamento,
-            periodo_referencia: pagamentoForm.periodo_referencia.trim()
-          }])
+          .insert([payload])
           .select('*')
           .single();
+        if (error) {
+          console.error('[Pagamento] Falha no insert', {
+            error: getSupabaseErrorDetails(error),
+            payload
+          });
+        }
         if (error) throw error;
+        const inserted = normalizePagamento(data as Pagamento);
+        setPagamentos((prev) => sortByDateDesc([inserted, ...prev], (item) => item.data_pagamento));
         const aulasQuitadas = Math.floor(valorPago / VALOR_AULA);
         showToast(`Pagamento registrado. Baixa automática para até ${aulasQuitadas} aula(s).`, 'success');
       }
       setIsPagamentoModalOpen(false);
-      await fetchInitialData();
     } catch (error) {
       console.error('Erro ao salvar pagamento:', error);
       showToast('Erro ao salvar pagamento.', 'error');

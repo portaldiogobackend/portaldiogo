@@ -22,6 +22,8 @@ type AuthUser = {
 export const Login: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const lastRedirectedUserIdRef = React.useRef<string | null>(null);
+  const isRedirectingRef = React.useRef(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -112,12 +114,28 @@ export const Login: React.FC = () => {
 
   // Verificar se o usuário já está logado ao carregar a página
   React.useEffect(() => {
-    const checkUser = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
+    let isMounted = true;
+
+    const redirectForSession = async (
+      session: Awaited<ReturnType<typeof supabase.auth.getSession>>['data']['session'],
+      source: string
+    ) => {
+      if (!isMounted || !session?.user) return;
+
+      if (isRedirectingRef.current && lastRedirectedUserIdRef.current === session.user.id) {
+        console.log(`[Auth] Redirecionamento ja em andamento para ${source}. Ignorando evento duplicado.`);
+        return;
+      }
+
+      isRedirectingRef.current = true;
+      console.log(`[Auth] Sessao ativa detectada via ${source}. Verificando perfil para redirecionamento...`);
+
+      try {
         console.log('[Auth] Usuário já possui sessão ativa. Verificando perfil para redirecionamento...');
         try {
           const userData = await getOrCreateUserProfile(session.user);
+          if (!isMounted) return;
+          lastRedirectedUserIdRef.current = session.user.id;
           if (userData.role === 'aluno' || userData.role === 'pai') {
             if (userData.signature === 'ativo') {
               navigate('/aluno/dashboard');
@@ -131,6 +149,13 @@ export const Login: React.FC = () => {
           console.error('[Auth] Erro ao verificar sessão existente:', err);
           setError('Erro ao carregar seu perfil. Por favor, tente novamente.');
         }
+      } catch (err) {
+        console.error('[Auth] Erro ao verificar sessao existente:', err);
+        if (isMounted) {
+          setError('Erro ao carregar seu perfil. Por favor, tente novamente.');
+        }
+      } finally {
+        isRedirectingRef.current = false;
       }
     };
     const exchangeOAuthCode = async () => {
@@ -162,21 +187,25 @@ export const Login: React.FC = () => {
       url.searchParams.delete('error_description');
       window.history.replaceState({}, document.title, `${url.pathname}${url.search}${url.hash}`);
       setIsOAuthProcessing(false);
-      await checkUser();
+      const { data: { session } } = await supabase.auth.getSession();
+      await redirectForSession(session, 'exchangeCodeForSession');
     };
 
     exchangeOAuthCode();
-    checkUser();
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      redirectForSession(session, 'getSession');
+    });
 
     // Listener para mudanças de estado de autenticação (ex: após login com Google)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       console.log(`[Auth] Evento de autenticação: ${event}`);
-      if (event === 'SIGNED_IN' && session) {
-        checkUser();
+      if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session) {
+        redirectForSession(session, event);
       }
     });
 
     return () => {
+      isMounted = false;
       subscription.unsubscribe();
     };
   }, [navigate]);
