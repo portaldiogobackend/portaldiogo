@@ -128,6 +128,48 @@ const isApiCommunicationError = (error: unknown) => {
     || text.includes('timeout');
 };
 
+const TESTE_OPTIONAL_COLUMNS = new Set(['lista', 'idtema', 'idalunos']);
+
+const extractMissingColumnName = (error: unknown): string | null => {
+  const text = formatApiErrorMessage(error, '');
+  if (!text) return null;
+  const patterns = [
+    /Could not find the '([^']+)' column/i,
+    /column "([^"]+)" of relation "[^"]+" does not exist/i,
+    /record "new" has no field "([^"]+)"/i,
+    /Unknown column '([^']+)'/i
+  ];
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match?.[1]) return match[1];
+  }
+  return null;
+};
+
+const isArrayTypeError = (error: unknown) => {
+  const text = formatApiErrorMessage(error, '').toLowerCase();
+  return text.includes('malformed array literal')
+    || text.includes('invalid input syntax for type uuid')
+    || text.includes('is of type uuid[] but expression is of type')
+    || text.includes('is of type text[] but expression is of type');
+};
+
+const convertSingleValueArrays = (payload: Record<string, unknown>) => {
+  const arrayFields = ['idmat', 'idseries', 'idtema', 'idalunos'] as const;
+  let changed = false;
+  const nextPayload: Record<string, unknown> = { ...payload };
+
+  for (const field of arrayFields) {
+    const value = nextPayload[field];
+    if (Array.isArray(value) && value.length <= 1) {
+      nextPayload[field] = value[0] ?? null;
+      changed = true;
+    }
+  }
+
+  return { payload: nextPayload, changed };
+};
+
 export default function AdminTestes() {
   const navigate = useNavigate();
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -1161,7 +1203,7 @@ export default function AdminTestes() {
     try {
       const alternativaString = filledAlternativas.join(';');
 
-      const dataToSave = {
+      const dataToSave: Record<string, unknown> = {
         idmat: formData.idmat,
         idseries: formData.idseries,
         idtema: formData.idtema,
@@ -1173,33 +1215,69 @@ export default function AdminTestes() {
         justificativa: formData.justificativa
       };
 
-      if (formData.id) {
-        const { data, error } = await supabase
-          .from('tbf_testes')
-          .update(dataToSave)
-          .eq('id', formData.id)
-          .select()
-          .single();
+      let payload = { ...dataToSave };
+      let attempts = 0;
+      let savedTeste: Teste | null = null;
 
-        if (error) throw error;
-        setTestes(prev => prev.map(t => t.id === formData.id ? data : t));
+      while (attempts < 6) {
+        attempts++;
+        const result = formData.id
+          ? await supabase
+              .from('tbf_testes')
+              .update(payload)
+              .eq('id', formData.id)
+              .select()
+              .single()
+          : await supabase
+              .from('tbf_testes')
+              .insert([payload])
+              .select()
+              .single();
+
+        if (!result.error) {
+          savedTeste = result.data as Teste;
+          break;
+        }
+
+        const missingColumn = extractMissingColumnName(result.error);
+        if (missingColumn && TESTE_OPTIONAL_COLUMNS.has(missingColumn) && missingColumn in payload) {
+          const nextPayload = { ...payload };
+          delete nextPayload[missingColumn];
+          payload = nextPayload;
+          continue;
+        }
+
+        if (isArrayTypeError(result.error)) {
+          const { payload: convertedPayload, changed } = convertSingleValueArrays(payload);
+          if (changed) {
+            payload = convertedPayload;
+            continue;
+          }
+        }
+
+        throw result.error;
+      }
+
+      if (!savedTeste) {
+        throw new Error('Não foi possível salvar o teste após múltiplas tentativas.');
+      }
+
+      if (formData.id) {
+        setTestes(prev => prev.map(t => t.id === formData.id ? savedTeste as Teste : t));
         showToast('Teste atualizado com sucesso!', 'success');
       } else {
-        const { data, error } = await supabase
-          .from('tbf_testes')
-          .insert([dataToSave])
-          .select()
-          .single();
-
-        if (error) throw error;
-        setTestes(prev => [data, ...prev]);
+        setTestes(prev => [savedTeste as Teste, ...prev]);
         showToast('Teste cadastrado com sucesso!', 'success');
       }
 
       closeModal();
     } catch (error) {
       console.error('Error saving test:', error);
-      showToast('Erro ao salvar teste. Verifique se a tabela tbf_testes existe.', 'error');
+      if (isApiCommunicationError(error)) {
+        showToast('Erro de comunicação com a API. Tente novamente em instantes.', 'error');
+      } else {
+        showToast(`Erro ao salvar teste: ${formatApiErrorMessage(error, 'falha desconhecida')}`, 'error');
+      }
     } finally {
       setSaving(false);
     }
