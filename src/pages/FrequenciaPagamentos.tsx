@@ -63,25 +63,57 @@ const toBooleanOrNull = (value: unknown) => {
   return null;
 };
 
-const getTimeOrNull = (value?: string | null) => {
+const DATE_ONLY_REGEX = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+const parseDateValue = (value?: string | null) => {
   const text = toText(value).trim();
   if (!text) return null;
-  const time = new Date(text).getTime();
-  return Number.isNaN(time) ? null : time;
+  const dateOnlyMatch = text.match(DATE_ONLY_REGEX);
+  if (dateOnlyMatch) {
+    const year = Number(dateOnlyMatch[1]);
+    const month = Number(dateOnlyMatch[2]);
+    const day = Number(dateOnlyMatch[3]);
+    const localDate = new Date(year, month - 1, day);
+    if (
+      localDate.getFullYear() === year
+      && localDate.getMonth() === month - 1
+      && localDate.getDate() === day
+    ) {
+      return localDate;
+    }
+    return null;
+  }
+  const parsed = new Date(text);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed;
+};
+
+const getTimeOrNull = (value?: string | null) => {
+  const parsed = parseDateValue(value);
+  if (!parsed) return null;
+  return parsed.getTime();
 };
 
 const formatDate = (value?: string | null) => {
-  const time = getTimeOrNull(value);
-  if (time === null) return '-';
-  const date = new Date(time);
-  return format(date, 'dd/MM/yyyy', { locale: ptBR });
+  const parsed = parseDateValue(value);
+  if (!parsed) return '-';
+  return format(parsed, 'dd/MM/yyyy', { locale: ptBR });
 };
 
 const formatMonthLabel = (value?: string | null) => {
-  const time = getTimeOrNull(value);
-  if (time === null) return 'Sem data';
-  const date = new Date(time);
-  return capitalizeWords(format(date, 'MMMM yyyy', { locale: ptBR }));
+  const parsed = parseDateValue(value);
+  if (!parsed) return 'Sem data';
+  return capitalizeWords(format(parsed, 'MMMM yyyy', { locale: ptBR }));
+};
+
+const toDateInputValue = (value?: string | null) => {
+  const text = toText(value).trim();
+  if (!text) return '';
+  const dateOnlyMatch = text.match(DATE_ONLY_REGEX);
+  if (dateOnlyMatch) return `${dateOnlyMatch[1]}-${dateOnlyMatch[2]}-${dateOnlyMatch[3]}`;
+  const parsed = parseDateValue(text);
+  if (!parsed) return '';
+  return format(parsed, 'yyyy-MM-dd');
 };
 
 type GroupedByMonth<T> = {
@@ -563,7 +595,7 @@ export const FrequenciaPagamentos: React.FC = () => {
     setCurrentFrequencia(item);
     setFrequenciaForm({
       aluno_id: item.aluno_id,
-      data_aula: item.data_aula ? item.data_aula.split('T')[0] : '',
+      data_aula: toDateInputValue(item.data_aula),
       conteudo_aula: item.conteudo_aula || '',
       status_pagamento: item.pago === true ? 'pago' : item.pago === false ? 'aberto' : (isFrequenciaPaid(item) ? 'pago' : 'aberto')
     });
@@ -581,7 +613,7 @@ export const FrequenciaPagamentos: React.FC = () => {
     setPagamentoForm({
       aluno_id: item.aluno_id,
       valor_pago: item.valor_pago?.toString() || '',
-      data_pagamento: item.data_pagamento ? item.data_pagamento.split('T')[0] : '',
+      data_pagamento: toDateInputValue(item.data_pagamento),
       periodo_referencia: item.periodo_referencia || ''
     });
     setIsPagamentoModalOpen(true);
@@ -631,9 +663,10 @@ export const FrequenciaPagamentos: React.FC = () => {
     try {
       const pagoValue = frequenciaForm.status_pagamento === 'pago';
       const canPersistPago = await ensurePagoColumnSupport();
+      const dataAulaValue = toDateInputValue(frequenciaForm.data_aula);
       const basePayload = {
         aluno_id: frequenciaForm.aluno_id,
-        data_aula: frequenciaForm.data_aula,
+        data_aula: dataAulaValue,
         conteudo_aula: frequenciaForm.conteudo_aula.trim()
       };
       const payload = canPersistPago ? { ...basePayload, pago: pagoValue } : basePayload;
@@ -672,12 +705,16 @@ export const FrequenciaPagamentos: React.FC = () => {
         if (error) throw error;
         const updated = normalizeFrequencia(data as Frequencia);
         if (!canPersistPago) updated.pago = pagoValue;
-        setFrequencias((prev) =>
-          sortByDateDesc(
-            prev.map((item) => (item.id === updated.id ? updated : item)),
-            (item) => item.data_aula
-          )
-        );
+        if (!updated.id) {
+          await fetchInitialData();
+        } else {
+          setFrequencias((prev) =>
+            sortByDateDesc(
+              prev.map((item) => (item.id === updated.id ? updated : item)),
+              (item) => item.data_aula
+            )
+          );
+        }
         showToast('Frequência atualizada.', 'success');
       } else {
         const insertWithPago = async (includePago: boolean) => supabase
@@ -704,7 +741,11 @@ export const FrequenciaPagamentos: React.FC = () => {
         if (error) throw error;
         const inserted = normalizeFrequencia(data as Frequencia);
         if (!canPersistPago) inserted.pago = pagoValue;
-        setFrequencias((prev) => sortByDateDesc([inserted, ...prev], (item) => item.data_aula));
+        if (!inserted.id) {
+          await fetchInitialData();
+        } else {
+          setFrequencias((prev) => sortByDateDesc([inserted, ...prev], (item) => item.data_aula));
+        }
         showToast('Frequência registrada.', 'success');
       }
       setIsFrequenciaModalOpen(false);
@@ -728,10 +769,11 @@ export const FrequenciaPagamentos: React.FC = () => {
     }
     setSavingPagamento(true);
     try {
+      const dataPagamentoValue = toDateInputValue(pagamentoForm.data_pagamento);
       const payload = {
         aluno_id: pagamentoForm.aluno_id,
         valor_pago: valorPago,
-        data_pagamento: pagamentoForm.data_pagamento,
+        data_pagamento: dataPagamentoValue,
         periodo_referencia: pagamentoForm.periodo_referencia.trim()
       };
 
@@ -757,12 +799,16 @@ export const FrequenciaPagamentos: React.FC = () => {
         }
         if (error) throw error;
         const updated = normalizePagamento(data as Pagamento);
-        setPagamentos((prev) =>
-          sortByDateDesc(
-            prev.map((item) => (item.id === updated.id ? updated : item)),
-            (item) => item.data_pagamento
-          )
-        );
+        if (!updated.id) {
+          await fetchInitialData();
+        } else {
+          setPagamentos((prev) =>
+            sortByDateDesc(
+              prev.map((item) => (item.id === updated.id ? updated : item)),
+              (item) => item.data_pagamento
+            )
+          );
+        }
         const aulasQuitadas = Math.floor(valorPago / VALOR_AULA);
         showToast(`Pagamento atualizado. Baixa automática para até ${aulasQuitadas} aula(s).`, 'success');
       } else {
@@ -779,7 +825,11 @@ export const FrequenciaPagamentos: React.FC = () => {
         }
         if (error) throw error;
         const inserted = normalizePagamento(data as Pagamento);
-        setPagamentos((prev) => sortByDateDesc([inserted, ...prev], (item) => item.data_pagamento));
+        if (!inserted.id) {
+          await fetchInitialData();
+        } else {
+          setPagamentos((prev) => sortByDateDesc([inserted, ...prev], (item) => item.data_pagamento));
+        }
         const aulasQuitadas = Math.floor(valorPago / VALOR_AULA);
         showToast(`Pagamento registrado. Baixa automática para até ${aulasQuitadas} aula(s).`, 'success');
       }
