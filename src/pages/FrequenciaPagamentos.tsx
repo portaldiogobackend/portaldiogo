@@ -18,6 +18,9 @@ interface Aluno {
   nome: string;
   sobrenome?: string | null;
   serie?: string | null;
+  email?: string | null;
+  telefone?: string | null;
+  signature?: string | null;
 }
 
 interface Frequencia {
@@ -294,9 +297,11 @@ export const FrequenciaPagamentos: React.FC = () => {
 
   const [isFrequenciaModalOpen, setIsFrequenciaModalOpen] = useState(false);
   const [isPagamentoModalOpen, setIsPagamentoModalOpen] = useState(false);
+  const [isQuickAlunoModalOpen, setIsQuickAlunoModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [savingFrequencia, setSavingFrequencia] = useState(false);
   const [savingPagamento, setSavingPagamento] = useState(false);
+  const [savingQuickAluno, setSavingQuickAluno] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
   const [currentFrequencia, setCurrentFrequencia] = useState<Frequencia | null>(null);
@@ -315,6 +320,11 @@ export const FrequenciaPagamentos: React.FC = () => {
     valor_pago: '',
     data_pagamento: '',
     periodo_referencia: ''
+  });
+  const [quickAlunoForm, setQuickAlunoForm] = useState({
+    nome: '',
+    sobrenome: '',
+    telefone: ''
   });
 
   const [freqAlunoId, setFreqAlunoId] = useState('');
@@ -395,7 +405,7 @@ export const FrequenciaPagamentos: React.FC = () => {
 
           const { data: linkedAlunos, error: linkedError } = await supabase
             .from('tbf_controle_user')
-            .select('id, nome, sobrenome, serie')
+            .select('id, nome, sobrenome, serie, email, telefone, signature')
             .in('email', emails)
             .eq('role', 'aluno')
             .order('nome');
@@ -446,7 +456,7 @@ export const FrequenciaPagamentos: React.FC = () => {
       const [alunosRes, frequenciasRes, pagamentosRes] = await Promise.all([
         supabase
           .from('tbf_controle_user')
-          .select('id, nome, sobrenome, serie')
+          .select('id, nome, sobrenome, serie, email, telefone, signature')
           .eq('role', 'aluno')
           .order('nome'),
         supabase
@@ -487,6 +497,14 @@ export const FrequenciaPagamentos: React.FC = () => {
     const aluno = alunos.find(a => a.id === id);
     if (!aluno) return 'Aluno';
     return capitalizeWords(`${aluno.nome} ${aluno.sobrenome || ''}`.trim());
+  };
+
+  const formatPhone = (value: string) => {
+    const digits = value.replace(/\D/g, '').slice(0, 11);
+    if (digits.length <= 2) return digits;
+    if (digits.length <= 7) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+    if (digits.length <= 10) return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
   };
 
   const paidFrequenciaIds = useMemo(() => {
@@ -566,9 +584,15 @@ export const FrequenciaPagamentos: React.FC = () => {
 
   const renderAlunoWithCredito = (alunoId: string) => {
     const stats = getAlunoFinancialStats(alunoId);
+    const aluno = alunos.find((item) => item.id === alunoId);
     return (
       <div className="flex items-center gap-2">
         <span>{alunoNome(alunoId)}</span>
+        {aluno && !aluno.email && (
+          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600">
+            Offline
+          </span>
+        )}
         {stats.aulasEmHaver > 0 && (
           <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-green-100 text-green-700">
             Crédito: {stats.aulasEmHaver}
@@ -606,6 +630,15 @@ export const FrequenciaPagamentos: React.FC = () => {
     setCurrentPagamento(null);
     setPagamentoForm({ aluno_id: '', valor_pago: '', data_pagamento: '', periodo_referencia: '' });
     setIsPagamentoModalOpen(true);
+  };
+
+  const openQuickAlunoCreate = () => {
+    setQuickAlunoForm({
+      nome: '',
+      sobrenome: '',
+      telefone: ''
+    });
+    setIsQuickAlunoModalOpen(true);
   };
 
   const openEditPagamento = (item: Pagamento) => {
@@ -842,6 +875,69 @@ export const FrequenciaPagamentos: React.FC = () => {
     }
   };
 
+  const handleSaveQuickAluno = async () => {
+    const nome = quickAlunoForm.nome.trim();
+    const sobrenome = quickAlunoForm.sobrenome.trim();
+    const telefone = quickAlunoForm.telefone.trim();
+    const telefoneNumeros = telefone.replace(/\D/g, '');
+
+    if (!nome || !telefone) {
+      showToast('Preencha nome e telefone do aluno.', 'error');
+      return;
+    }
+
+    if (telefoneNumeros.length < 10) {
+      showToast('Informe um telefone valido.', 'error');
+      return;
+    }
+
+    setSavingQuickAluno(true);
+    try {
+      const novoAlunoId = crypto.randomUUID();
+      const novoAluno: Aluno = {
+        id: novoAlunoId,
+        nome: capitalizeWords(nome),
+        sobrenome: capitalizeWords(sobrenome),
+        telefone,
+        email: '',
+        signature: 'inativo'
+      };
+
+      const { error } = await supabase
+        .from('tbf_controle_user')
+        .insert({
+          id: novoAlunoId,
+          nome: novoAluno.nome,
+          sobrenome: novoAluno.sobrenome || '',
+          telefone,
+          email: '',
+          role: 'aluno',
+          signature: 'inativo',
+          emailaluno: '',
+          emailpai: ''
+        });
+
+      if (error) throw error;
+
+      setAlunos((prev) =>
+        [...prev, novoAluno].sort((a, b) =>
+          `${a.nome} ${a.sobrenome || ''}`.localeCompare(`${b.nome} ${b.sobrenome || ''}`, 'pt-BR')
+        )
+      );
+      setFreqAlunoId(novoAlunoId);
+      setPagAlunoId(novoAlunoId);
+      setFrequenciaForm((prev) => ({ ...prev, aluno_id: novoAlunoId }));
+      setPagamentoForm((prev) => ({ ...prev, aluno_id: novoAlunoId }));
+      setIsQuickAlunoModalOpen(false);
+      showToast('Aluno interno criado. Ele pode ser usado somente para controle offline.', 'success');
+    } catch (error) {
+      console.error('Erro ao criar aluno interno:', error);
+      showToast('Erro ao criar aluno interno.', 'error');
+    } finally {
+      setSavingQuickAluno(false);
+    }
+  };
+
   const confirmDelete = (type: 'frequencia' | 'pagamento', id: string) => {
     setDeleteTarget({ type, id });
     setIsDeleteModalOpen(true);
@@ -964,6 +1060,10 @@ export const FrequenciaPagamentos: React.FC = () => {
             </h1>
             {isStaff && (
               <div className="flex flex-wrap gap-2 justify-end">
+                <Button onClick={openQuickAlunoCreate} variant="ghost" className="border border-gray-200">
+                  <Plus size={18} className="mr-2" />
+                  Incluir UsuÃ¡rio Offline
+                </Button>
                 <Button onClick={openCreateFrequencia} className="bg-[#4318FF] hover:bg-[#3311CC]">
                   <Plus size={18} className="mr-2" />
                   Registrar Frequência
@@ -993,6 +1093,9 @@ export const FrequenciaPagamentos: React.FC = () => {
                 {isStaff && (
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                     <div className="bg-white rounded-3xl shadow-xl shadow-gray-200/40 border border-gray-100 p-6">
+                      <div className="mb-4 rounded-2xl bg-[#F4F7FE] px-4 py-3 text-sm text-[#2B3674]">
+                        Controle interno offline: use <span className="font-semibold">Incluir UsuÃ¡rio Offline</span> para cadastrar alunos sem acesso ao portal e registrar apenas presenÃ§a e pagamentos.
+                      </div>
                       <div className="flex items-center justify-between mb-4">
                         <h2 className="text-lg font-bold text-[#1B2559]">Frequência</h2>
                         <span className="text-sm text-gray-400">{filteredFrequencias.length} registros</span>
@@ -1149,7 +1252,7 @@ export const FrequenciaPagamentos: React.FC = () => {
                             <option value="">Todos</option>
                             {alunos.map((aluno) => (
                               <option key={aluno.id} value={aluno.id}>
-                                {capitalizeWords(`${aluno.nome} ${aluno.sobrenome || ''}`.trim())}
+                                {capitalizeWords(`${aluno.nome} ${aluno.sobrenome || ''}`.trim())}{!aluno.email ? ' - offline' : ''}
                               </option>
                             ))}
                           </select>
@@ -1216,7 +1319,7 @@ export const FrequenciaPagamentos: React.FC = () => {
                             <option value="">Todos</option>
                             {alunos.map((aluno) => (
                               <option key={aluno.id} value={aluno.id}>
-                                {capitalizeWords(`${aluno.nome} ${aluno.sobrenome || ''}`.trim())}
+                                {capitalizeWords(`${aluno.nome} ${aluno.sobrenome || ''}`.trim())}{!aluno.email ? ' - offline' : ''}
                               </option>
                             ))}
                           </select>
@@ -1394,7 +1497,7 @@ export const FrequenciaPagamentos: React.FC = () => {
               <option value="">Selecione</option>
               {alunos.map(aluno => (
                 <option key={aluno.id} value={aluno.id}>
-                  {capitalizeWords(`${aluno.nome} ${aluno.sobrenome || ''}`.trim())}
+                  {capitalizeWords(`${aluno.nome} ${aluno.sobrenome || ''}`.trim())}{!aluno.email ? ' - offline' : ''}
                 </option>
               ))}
             </select>
@@ -1462,7 +1565,7 @@ export const FrequenciaPagamentos: React.FC = () => {
               <option value="">Selecione</option>
               {alunos.map(aluno => (
                 <option key={aluno.id} value={aluno.id}>
-                  {capitalizeWords(`${aluno.nome} ${aluno.sobrenome || ''}`.trim())}
+                  {capitalizeWords(`${aluno.nome} ${aluno.sobrenome || ''}`.trim())}{!aluno.email ? ' - offline' : ''}
                 </option>
               ))}
             </select>
@@ -1505,6 +1608,57 @@ export const FrequenciaPagamentos: React.FC = () => {
             </Button>
             <Button onClick={handleSavePagamento} isLoading={savingPagamento} className="flex-1">
               Salvar
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={isQuickAlunoModalOpen}
+        onClose={() => setIsQuickAlunoModalOpen(false)}
+        title="Incluir UsuÃ¡rio Offline"
+        className="max-w-xl"
+      >
+        <div className="space-y-5">
+          <div className="rounded-2xl bg-[#F4F7FE] px-4 py-3 text-sm text-[#2B3674]">
+            Esse cadastro Ã© interno. O aluno ficarÃ¡ disponÃ­vel apenas para controle de presenÃ§a e pagamentos, sem acesso ao portal.
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700">Nome *</label>
+              <input
+                type="text"
+                value={quickAlunoForm.nome}
+                onChange={(e) => setQuickAlunoForm((prev) => ({ ...prev, nome: e.target.value }))}
+                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-700 focus:ring-2 focus:ring-[#4318FF] outline-none"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700">Sobrenome</label>
+              <input
+                type="text"
+                value={quickAlunoForm.sobrenome}
+                onChange={(e) => setQuickAlunoForm((prev) => ({ ...prev, sobrenome: e.target.value }))}
+                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-700 focus:ring-2 focus:ring-[#4318FF] outline-none"
+              />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-gray-700">Telefone *</label>
+            <input
+              type="tel"
+              value={quickAlunoForm.telefone}
+              onChange={(e) => setQuickAlunoForm((prev) => ({ ...prev, telefone: formatPhone(e.target.value) }))}
+              placeholder="(99) 99999-9999"
+              className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-700 focus:ring-2 focus:ring-[#4318FF] outline-none"
+            />
+          </div>
+          <div className="flex gap-3">
+            <Button variant="ghost" onClick={() => setIsQuickAlunoModalOpen(false)} className="flex-1">
+              Cancelar
+            </Button>
+            <Button onClick={handleSaveQuickAluno} isLoading={savingQuickAluno} className="flex-1">
+              Salvar UsuÃ¡rio
             </Button>
           </div>
         </div>
